@@ -48,8 +48,7 @@
 
     <hr>
 
-    <h3>Comentarios</h3>
-
+    <h3>Comentarios</h3> <br>
     <h4>Buscar en comentarios</h4>
     <form action="/view" method="GET">
         <input type="hidden" name="id" value="{{.Post.ID}}">
@@ -59,6 +58,7 @@
     {{if .CommentQuery}}
         <p><a href="/view?id={{.Post.ID}}&clear_cquery=1">Limpiar búsqueda de comentarios</a></p>
     {{end}}
+    <br>
 
     {{if .CommentQuery}}
         <h4>Resultados en comentarios: "{{.CommentQuery}}"</h4>

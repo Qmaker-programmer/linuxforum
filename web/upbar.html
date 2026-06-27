@@ -2,26 +2,28 @@
     <div class="upbar">
         <a href="/"><img src="/web/tux.png" alt="tux" width="75"></a>
         <h2>Linux Forums</h2>
-        <a href="/">Inicio -></a><br>
+        <br><br>
+        <br><a href="/">Inicio -></a><br>
         {{if .LoggedUser}}
             <p>Hola, <a href="/user?u={{.LoggedUser}}"><strong>{{.LoggedUser}}</strong></a></p>
+            <br>
             <a href="/web/public.html">Publicar algo -></a><br>
             <a href="/logout">Cerrar sesión</a>
         {{else}}
             <a href="/web/login.html">Iniciar sesión -></a>
         {{end}}
+        <br>
         <form action="/theme" method="GET">
             <input type="hidden" name="mode" value="{{if eq .Theme "dark"}}light{{else}}dark{{end}}">
             <button type="submit">{{if eq .Theme "dark"}}Modo claro{{else}}Modo oscuro{{end}}</button>
         </form>
-        <hr>
+        <br>
 
         <h3>Buscar publicaciones</h3>
         <form action="/search" method="GET">
             <input type="text" name="query" placeholder="Buscar por título..." value="{{.Query}}" required>
             <button type="submit">Buscar</button>
         </form>
-
         <h3>Buscar usuarios</h3>
         <form action="/search" method="GET">
             <input type="text" name="user" placeholder="Buscar por nombre de usuario..." required>
