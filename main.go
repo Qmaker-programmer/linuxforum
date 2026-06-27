@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -14,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -54,11 +56,7 @@ type Session struct {
 	ExpiresAt time.Time
 }
 
-var posts []Post
-var comments []Comment
-var nextID = 1
-var nextCommentID = 1
-var users = make(map[string]User)
+var db *sql.DB
 var sessions = make(map[string]Session)
 
 const searchQueryCookie = "search_query"
@@ -68,7 +66,7 @@ type Config struct {
 	RateLimit            int    `json:"rate_limit"`
 	ResetMinutes         int    `json:"reset_minutes"`
 	Port                 int    `json:"port"`
-	DataFile             string `json:"data_file"`
+	DBPath               string `json:"db_path"`
 	HTTPS                bool   `json:"https"`
 	CertFile             string `json:"cert_file"`
 	KeyFile              string `json:"key_file"`
@@ -84,7 +82,7 @@ var mu sync.Mutex
 func loadConfig() {
 	config = Config{
 		Port:                 8080,
-		DataFile:             "forum.json",
+		DBPath:               "forum.db",
 		CertFile:             "cert.pem",
 		KeyFile:              "key.pem",
 		SessionTokenName:     "session_token",
@@ -100,15 +98,6 @@ func loadConfig() {
 	defer f.Close()
 	if err := json.NewDecoder(f).Decode(&config); err != nil {
 		fmt.Println("Error al decodificar config.json, usando valores por defecto:", err)
-		config = Config{
-			Port:                 8080,
-			DataFile:             "forum.json",
-			CertFile:             "cert.pem",
-			KeyFile:              "key.pem",
-			SessionTokenName:     "session_token",
-			RateLimit:            100,
-			ResetMinutes:         1,
-		}
 		return
 	}
 	if config.RateLimit <= 0 {
@@ -120,8 +109,8 @@ func loadConfig() {
 	if config.Port <= 0 {
 		config.Port = 8080
 	}
-	if config.DataFile == "" {
-		config.DataFile = "forum.json"
+	if config.DBPath == "" {
+		config.DBPath = "forum.db"
 	}
 	if config.CertFile == "" {
 		config.CertFile = "cert.pem"
@@ -131,6 +120,49 @@ func loadConfig() {
 	}
 	if config.SessionTokenName == "" {
 		config.SessionTokenName = "session_token"
+	}
+}
+
+func initDB() {
+	var err error
+	db, err = sql.Open("sqlite3", config.DBPath)
+	if err != nil {
+		fmt.Println("Error al abrir base de datos:", err)
+		os.Exit(1)
+	}
+	db.Exec("PRAGMA journal_mode=WAL")
+
+	schema := `
+	CREATE TABLE IF NOT EXISTS posts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT NOT NULL,
+		user TEXT NOT NULL,
+		message TEXT NOT NULL,
+		created_at TEXT NOT NULL
+	);
+	CREATE TABLE IF NOT EXISTS comments (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		post_id INTEGER NOT NULL,
+		parent_id INTEGER NOT NULL DEFAULT 0,
+		user TEXT NOT NULL,
+		message TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		deleted INTEGER NOT NULL DEFAULT 0
+	);
+	CREATE TABLE IF NOT EXISTS users (
+		username TEXT PRIMARY KEY,
+		password TEXT NOT NULL,
+		description TEXT NOT NULL DEFAULT ''
+	);
+	CREATE TABLE IF NOT EXISTS saved_posts (
+		username TEXT NOT NULL,
+		post_id INTEGER NOT NULL,
+		PRIMARY KEY (username, post_id)
+	);`
+
+	if _, err := db.Exec(schema); err != nil {
+		fmt.Println("Error al crear tablas:", err)
+		os.Exit(1)
 	}
 }
 
@@ -186,68 +218,6 @@ func cleanupExpiredSessions() {
 		}
 		mu.Unlock()
 	}
-}
-
-type persistedData struct {
-	Posts         []Post          `json:"posts"`
-	Comments      []Comment       `json:"comments"`
-	NextID        int             `json:"next_id"`
-	NextCommentID int             `json:"next_comment_id"`
-	Users         map[string]User `json:"users"`
-}
-
-func saveData() {
-	data := persistedData{
-		Posts:         posts,
-		Comments:      comments,
-		NextID:        nextID,
-		NextCommentID: nextCommentID,
-		Users:         users,
-	}
-
-	tmpFile := config.DataFile + ".tmp"
-	f, err := os.Create(tmpFile)
-	if err != nil {
-		fmt.Println("Error al guardar datos:", err)
-		return
-	}
-	defer f.Close()
-
-	if err := json.NewEncoder(f).Encode(data); err != nil {
-		fmt.Println("Error al codificar datos:", err)
-		return
-	}
-	if err := f.Sync(); err != nil {
-		fmt.Println("Error al sincronizar datos:", err)
-		return
-	}
-	if err := os.Rename(tmpFile, config.DataFile); err != nil {
-		fmt.Println("Error al renombrar archivo temporal:", err)
-	}
-}
-
-func loadData() {
-	f, err := os.Open(config.DataFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return
-		}
-		fmt.Println("Error al cargar datos:", err)
-		return
-	}
-	defer f.Close()
-
-	var data persistedData
-	if err := json.NewDecoder(f).Decode(&data); err != nil {
-		fmt.Println("Error al decodificar datos:", err)
-		return
-	}
-
-	posts = data.Posts
-	comments = data.Comments
-	nextID = data.NextID
-	nextCommentID = data.NextCommentID
-	users = data.Users
 }
 
 func getLoggedUser(r *http.Request) string {
@@ -324,45 +294,224 @@ func redirectToLogin(w http.ResponseWriter, r *http.Request, params url.Values) 
 	http.Redirect(w, r, "/web/login.html?"+params.Encode(), http.StatusSeeOther)
 }
 
-func getUserPosts(username string) []Post {
+// --- Database access functions ---
+
+func getAllPosts() []Post {
+	rows, err := db.Query("SELECT id, title, user, message, created_at FROM posts ORDER BY created_at DESC")
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
 	var result []Post
-	for _, p := range posts {
-		if p.User == username {
-			result = append(result, p)
+	for rows.Next() {
+		var p Post
+		if err := rows.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Time); err != nil {
+			continue
 		}
+		result = append(result, p)
 	}
 	return result
 }
 
 func getPostByID(id int) *Post {
-	for _, p := range posts {
-		if p.ID == id {
-			copy := p
-			return &copy
-		}
+	row := db.QueryRow("SELECT id, title, user, message, created_at FROM posts WHERE id = ?", id)
+	var p Post
+	if err := row.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Time); err != nil {
+		return nil
 	}
-	return nil
+	return &p
 }
 
 func getCommentByID(id int) *Comment {
-	for _, c := range comments {
-		if c.ID == id {
-			copy := c
-			return &copy
+	row := db.QueryRow("SELECT id, post_id, parent_id, user, message, created_at, deleted FROM comments WHERE id = ?", id)
+	var c Comment
+	var deleted int
+	if err := row.Scan(&c.ID, &c.PostID, &c.ParentID, &c.User, &c.Message, &c.Time, &deleted); err != nil {
+		return nil
+	}
+	c.Deleted = deleted == 1
+	return &c
+}
+
+func getCommentsForPost(postID int) []Comment {
+	rows, err := db.Query("SELECT id, post_id, parent_id, user, message, created_at, deleted FROM comments WHERE post_id = ? ORDER BY created_at ASC", postID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var result []Comment
+	for rows.Next() {
+		var c Comment
+		var deleted int
+		if err := rows.Scan(&c.ID, &c.PostID, &c.ParentID, &c.User, &c.Message, &c.Time, &deleted); err != nil {
+			continue
+		}
+		c.Deleted = deleted == 1
+		result = append(result, c)
+	}
+	return result
+}
+
+func getUserPosts(username string) []Post {
+	rows, err := db.Query("SELECT id, title, user, message, created_at FROM posts WHERE user = ? ORDER BY created_at DESC", username)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var result []Post
+	for rows.Next() {
+		var p Post
+		if err := rows.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Time); err != nil {
+			continue
+		}
+		result = append(result, p)
+	}
+	return result
+}
+
+func getSavedPosts(username string) []Post {
+	rows, err := db.Query("SELECT p.id, p.title, p.user, p.message, p.created_at FROM posts p JOIN saved_posts s ON p.id = s.post_id WHERE s.username = ? ORDER BY p.created_at DESC", username)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var result []Post
+	for rows.Next() {
+		var p Post
+		if err := rows.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Time); err != nil {
+			continue
+		}
+		result = append(result, p)
+	}
+	return result
+}
+
+func isPostSaved(username string, postID int) bool {
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM saved_posts WHERE username = ? AND post_id = ?", username, postID).Scan(&count)
+	return count > 0
+}
+
+func existsUser(username string) bool {
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM users WHERE username = ?", username).Scan(&count)
+	return count > 0
+}
+
+func getUser(username string) *User {
+	row := db.QueryRow("SELECT username, password, description FROM users WHERE username = ?", username)
+	var u User
+	if err := row.Scan(&u.Username, &u.Password, &u.Description); err != nil {
+		return nil
+	}
+	rows, err := db.Query("SELECT post_id FROM saved_posts WHERE username = ?", username)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id int
+			rows.Scan(&id)
+			u.SavedPostIDs = append(u.SavedPostIDs, id)
+		}
+	}
+	return &u
+}
+
+func renameUser(oldName, newName string) error {
+	if oldName == newName {
+		return nil
+	}
+	if existsUser(newName) {
+		return fmt.Errorf("El nombre ya está en uso.")
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("Error al iniciar transacción")
+	}
+	defer tx.Rollback()
+
+	tx.Exec("INSERT INTO users (username, password, description) SELECT ?, password, description FROM users WHERE username = ?", newName, oldName)
+	tx.Exec("DELETE FROM users WHERE username = ?", oldName)
+	tx.Exec("UPDATE posts SET user = ? WHERE user = ?", newName, oldName)
+	tx.Exec("UPDATE comments SET user = ? WHERE user = ?", newName, oldName)
+	tx.Exec("UPDATE saved_posts SET username = ? WHERE username = ?", newName, oldName)
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("Error al renombrar usuario")
+	}
+
+	for token, session := range sessions {
+		if session.Username == oldName {
+			session.Username = newName
+			sessions[token] = session
 		}
 	}
 	return nil
 }
 
-func getCommentsForPost(postID int) []Comment {
-	var result []Comment
-	for _, c := range comments {
-		if c.PostID == postID {
-			result = append(result, c)
+// --- Comment pruning ---
+
+func subtreeIsDead(id int) bool {
+	var deleted int
+	db.QueryRow("SELECT deleted FROM comments WHERE id = ?", id).Scan(&deleted)
+	if deleted == 0 {
+		return false
+	}
+	rows, err := db.Query("SELECT id FROM comments WHERE parent_id = ?", id)
+	if err != nil {
+		return true
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var childID int
+		rows.Scan(&childID)
+		if !subtreeIsDead(childID) {
+			return false
 		}
 	}
-	return result
+	return true
 }
+
+func removeDeadSubtree(id int) {
+	rows, err := db.Query("SELECT id FROM comments WHERE parent_id = ?", id)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	var childIDs []int
+	for rows.Next() {
+		var cid int
+		rows.Scan(&cid)
+		childIDs = append(childIDs, cid)
+	}
+	for _, childID := range childIDs {
+		removeDeadSubtree(childID)
+	}
+	db.Exec("DELETE FROM comments WHERE id = ?", id)
+}
+
+func checkAndPruneUpward(id int) {
+	var deleted int
+	var parentID int
+	db.QueryRow("SELECT deleted, parent_id FROM comments WHERE id = ?", id).Scan(&deleted, &parentID)
+	if deleted == 0 {
+		return
+	}
+	if !subtreeIsDead(id) {
+		return
+	}
+	removeDeadSubtree(id)
+	if parentID != 0 {
+		checkAndPruneUpward(parentID)
+	}
+}
+
+func deleteCommentAndPrune(commentID int) {
+	db.Exec("UPDATE comments SET deleted = 1, message = '[eliminado]' WHERE id = ?", commentID)
+	checkAndPruneUpward(commentID)
+}
+
+// --- Template helpers ---
 
 func buildCommentTree(all []Comment, parentID, postID int, loggedUser string) []*CommentNode {
 	var nodes []*CommentNode
@@ -412,168 +561,44 @@ func sortPosts(posts []Post, sortBy, order string) []Post {
 	return result
 }
 
-func getSavedPosts(username string) []Post {
-	user, ok := users[username]
-	if !ok {
+// --- Helper for searching users ---
+
+func searchUsers(query string) []string {
+	var result []string
+	rows, err := db.Query("SELECT username FROM users WHERE LOWER(username) LIKE ?", "%"+strings.ToLower(query)+"%")
+	if err != nil {
 		return nil
 	}
-	var result []Post
-	for _, id := range user.SavedPostIDs {
-		if p := getPostByID(id); p != nil {
-			result = append(result, *p)
-		}
+	defer rows.Close()
+	for rows.Next() {
+		var u string
+		rows.Scan(&u)
+		result = append(result, u)
 	}
 	return result
 }
 
-func isPostSaved(username string, postID int) bool {
-	user, ok := users[username]
-	if !ok {
-		return false
-	}
-	for _, id := range user.SavedPostIDs {
-		if id == postID {
-			return true
-		}
-	}
-	return false
-}
-
-func renameUser(oldName, newName string) error {
-	if _, exists := users[newName]; exists {
-		return fmt.Errorf("El nombre ya está en uso.")
-	}
-	user, ok := users[oldName]
-	if !ok {
-		return fmt.Errorf("Usuario no encontrado")
-	}
-	user.Username = newName
-	users[newName] = user
-	delete(users, oldName)
-
-	for i := range posts {
-		if posts[i].User == oldName {
-			posts[i].User = newName
-		}
-	}
-	for i := range comments {
-		if comments[i].User == oldName {
-			comments[i].User = newName
-		}
-	}
-	for token, session := range sessions {
-		if session.Username == oldName {
-			session.Username = newName
-			sessions[token] = session
-		}
-	}
-	return nil
-}
-
-func subtreeIsDead(id int) bool {
-	// Checks if a comment and ALL its descendants are deleted or removed
-	for _, c := range comments {
-		if c.ID == id {
-			if !c.Deleted {
-				return false
-			}
-			break
-		}
-	}
-	for _, c := range comments {
-		if c.ParentID == id {
-			if !subtreeIsDead(c.ID) {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func removeDeadSubtree(id int) {
-	var childIDs []int
-	for _, c := range comments {
-		if c.ParentID == id {
-			childIDs = append(childIDs, c.ID)
-		}
-	}
-	for _, childID := range childIDs {
-		removeDeadSubtree(childID)
-	}
-	for i, c := range comments {
-		if c.ID == id {
-			comments = append(comments[:i], comments[i+1:]...)
-			break
-		}
-	}
-}
-
-func checkAndPruneUpward(id int) {
-	isDeleted := false
-	parentID := 0
-	for _, c := range comments {
-		if c.ID == id {
-			isDeleted = c.Deleted
-			parentID = c.ParentID
-			break
-		}
-	}
-	if !isDeleted {
-		return
-	}
-	if !subtreeIsDead(id) {
-		return
-	}
-	removeDeadSubtree(id)
-	if parentID != 0 {
-		checkAndPruneUpward(parentID)
-	}
-}
-
-func deleteCommentAndPrune(commentID int) {
-	for i, c := range comments {
-		if c.ID == commentID {
-			comments[i].Deleted = true
-			comments[i].Message = "[eliminado]"
-			break
-		}
-	}
-	checkAndPruneUpward(commentID)
-}
+// --- Main ---
 
 func main() {
 	loadConfig()
-	loadData()
+	initDB()
 
-	if len(users) == 0 {
+	var userCount int
+	db.QueryRow("SELECT COUNT(*) FROM users").Scan(&userCount)
+	if userCount == 0 {
 		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("1234"), bcrypt.DefaultCost)
-		users["admin"] = User{
-			Username:     "admin",
-			Password:     string(hashedPassword),
-			Description:  "Administrador del foro.",
-			SavedPostIDs: []int{},
-		}
-
-		posts = append(posts, Post{
-			ID:      nextID,
-			Title:   "¡Bienvenidos al nuevo foro!",
-			User:    "admin",
-			Message: "Este es el contenido completo del primer post de prueba.",
-			Time:    time.Now().Format("15:04"),
-		})
-		nextID++
-		saveData()
+		db.Exec("INSERT INTO users (username, password, description) VALUES (?, ?, ?)", "admin", string(hashedPassword), "Administrador del foro.")
+		now := time.Now().Format("2006-01-02 15:04")
+		db.Exec("INSERT INTO posts (title, user, message, created_at) VALUES (?, ?, ?, ?)", "¡Bienvenidos al nuevo foro!", "admin", "Este es el contenido completo del primer post de prueba.", now)
 	}
 
 	renderPage := func(w http.ResponseWriter, pageFile string, data any) {
-		// Añadimos "web/head.html" a los archivos que se parsean
 		tmpl, err := template.ParseFiles("web/head.html", "web/upbar.html", pageFile)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		
-		// Se ejecuta la plantilla principal (pageFile) pasándole los datos
 		if err := tmpl.ExecuteTemplate(w, filepath.Base(pageFile), data); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
@@ -627,12 +652,13 @@ func main() {
 			return
 		}
 		query, loggedUser := pageContext(r)
+		allPosts := getAllPosts()
 		renderPage(w, "web/index.html", struct {
 			Posts      []Post
 			Query      string
 			LoggedUser string
 		}{
-			Posts:      posts,
+			Posts:      allPosts,
 			Query:      query,
 			LoggedUser: loggedUser,
 		})
@@ -649,7 +675,8 @@ func main() {
 		}
 
 		query, loggedUser := pageContext(r)
-		sorted := sortPosts(posts, sortBy, order)
+		allPosts := getAllPosts()
+		sorted := sortPosts(allPosts, sortBy, order)
 		renderPage(w, "web/filtered.html", struct {
 			Posts      []Post
 			Query      string
@@ -689,7 +716,7 @@ func main() {
 				redirectToLogin(w, r, params)
 				return
 			}
-			if _, exists := users[username]; exists {
+			if existsUser(username) {
 				params.Set("register_user_error", "Ese nombre ya está en uso.")
 				redirectToLogin(w, r, params)
 				return
@@ -700,11 +727,7 @@ func main() {
 				redirectToLogin(w, r, params)
 				return
 			}
-			users[username] = User{
-				Username:     username,
-				Password:     string(hashed),
-				SavedPostIDs: []int{},
-			}
+			db.Exec("INSERT INTO users (username, password, description) VALUES (?, ?, ?)", username, string(hashed), "")
 
 			token := strconv.FormatInt(time.Now().UnixNano(), 10)
 			sessions[token] = Session{
@@ -718,7 +741,6 @@ func main() {
 				Path:  "/",
 			})
 			fmt.Println("Usuario registrado con éxito de forma encriptada.")
-			saveData()
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
@@ -738,8 +760,8 @@ func main() {
 				return
 			}
 
-			user, exists := users[username]
-			if !exists {
+			user := getUser(username)
+			if user == nil {
 				params.Set("login_user_error", "Ese usuario no existe.")
 				redirectToLogin(w, r, params)
 				return
@@ -796,15 +818,8 @@ func main() {
 			message := r.FormValue("message")
 
 			if title != "" && message != "" {
-				posts = append(posts, Post{
-					ID:      nextID,
-					Title:   title,
-					User:    username,
-					Message: message,
-					Time:    time.Now().Format("15:04"),
-				})
-				nextID++
-				saveData()
+				now := time.Now().Format("2006-01-02 15:04")
+				db.Exec("INSERT INTO posts (title, user, message, created_at) VALUES (?, ?, ?, ?)", title, username, message, now)
 			}
 		}
 		http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -843,16 +858,8 @@ func main() {
 			return
 		}
 
-		comments = append(comments, Comment{
-			ID:       nextCommentID,
-			PostID:   postID,
-			ParentID: parentID,
-			User:     username,
-			Message:  message,
-			Time:     time.Now().Format("15:04"),
-		})
-		nextCommentID++
-		saveData()
+		now := time.Now().Format("2006-01-02 15:04")
+		db.Exec("INSERT INTO comments (post_id, parent_id, user, message, created_at) VALUES (?, ?, ?, ?, ?)", postID, parentID, username, message, now)
 
 		http.Redirect(w, r, "/view?id="+strconv.Itoa(postID), http.StatusSeeOther)
 	})
@@ -888,7 +895,6 @@ func main() {
 
 		postID := comment.PostID
 		deleteCommentAndPrune(commentID)
-		saveData()
 		http.Redirect(w, r, "/view?id="+strconv.Itoa(postID), http.StatusSeeOther)
 	})
 
@@ -901,23 +907,22 @@ func main() {
 		}
 
 		var matchedPosts []Post
-		searchQueryLower := strings.ToLower(searchQuery)
-
-		for _, p := range posts {
-			if strings.Contains(strings.ToLower(p.Title), searchQueryLower) {
-				matchedPosts = append(matchedPosts, p)
+		if searchQuery != "" {
+			rows, err := db.Query("SELECT id, title, user, message, created_at FROM posts WHERE LOWER(title) LIKE ? ORDER BY created_at DESC", "%"+strings.ToLower(searchQuery)+"%")
+			if err == nil {
+				defer rows.Close()
+				for rows.Next() {
+					var p Post
+					rows.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Time)
+					matchedPosts = append(matchedPosts, p)
+				}
 			}
 		}
 
 		userQuery := r.URL.Query().Get("user")
 		var matchedUsers []string
 		if userQuery != "" {
-			userQueryLower := strings.ToLower(userQuery)
-			for u := range users {
-				if strings.Contains(strings.ToLower(u), userQueryLower) {
-					matchedUsers = append(matchedUsers, u)
-				}
-			}
+			matchedUsers = searchUsers(userQuery)
 		}
 
 		sortBy := r.URL.Query().Get("sort_by")
@@ -1046,22 +1051,9 @@ func main() {
 				return
 			}
 
-			var kept []Post
-			for _, p := range posts {
-				if p.ID != post.ID {
-					kept = append(kept, p)
-				}
-			}
-			posts = kept
-
-			var keptComments []Comment
-			for _, c := range comments {
-				if c.PostID != post.ID {
-					keptComments = append(keptComments, c)
-				}
-			}
-			comments = keptComments
-			saveData()
+			db.Exec("DELETE FROM comments WHERE post_id = ?", post.ID)
+			db.Exec("DELETE FROM saved_posts WHERE post_id = ?", post.ID)
+			db.Exec("DELETE FROM posts WHERE id = ?", post.ID)
 
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
@@ -1087,8 +1079,8 @@ func main() {
 			return
 		}
 
-		user, exists := users[username]
-		if !exists {
+		user := getUser(username)
+		if user == nil {
 			http.Error(w, "Usuario no encontrado", http.StatusNotFound)
 			return
 		}
@@ -1107,7 +1099,7 @@ func main() {
 		}{
 			Query:        query,
 			LoggedUser:   loggedUser,
-			ProfileUser:  user,
+			ProfileUser:  *user,
 			Posts:        getUserPosts(username),
 			IsOwnProfile: isOwn,
 			Error:        r.URL.Query().Get("error"),
@@ -1147,11 +1139,7 @@ func main() {
 			loggedUser = newUsername
 		}
 
-		user := users[loggedUser]
-		user.Description = description
-		users[loggedUser] = user
-		saveData()
-
+		db.Exec("UPDATE users SET description = ? WHERE username = ?", description, loggedUser)
 		http.Redirect(w, r, "/user?u="+url.QueryEscape(loggedUser), http.StatusSeeOther)
 	})
 
@@ -1173,11 +1161,8 @@ func main() {
 			return
 		}
 
-		user := users[loggedUser]
 		if !isPostSaved(loggedUser, postID) {
-			user.SavedPostIDs = append(user.SavedPostIDs, postID)
-			users[loggedUser] = user
-			saveData()
+			db.Exec("INSERT OR IGNORE INTO saved_posts (username, post_id) VALUES (?, ?)", loggedUser, postID)
 		}
 
 		returnURL := r.FormValue("return")
@@ -1205,16 +1190,7 @@ func main() {
 			return
 		}
 
-		user := users[loggedUser]
-		var kept []int
-		for _, id := range user.SavedPostIDs {
-			if id != postID {
-				kept = append(kept, id)
-			}
-		}
-		user.SavedPostIDs = kept
-		users[loggedUser] = user
-		saveData()
+		db.Exec("DELETE FROM saved_posts WHERE username = ? AND post_id = ?", loggedUser, postID)
 
 		returnURL := r.FormValue("return")
 		if returnURL == "" {

@@ -1,6 +1,6 @@
 # Linux Forum
 
-Un foro minimalista y autónomo escrito en Go, con almacenamiento en memoria, sesiones por cookie, configuración vía JSON, y un sistema de comentarios anidados con podado inteligente.
+Un foro minimalista y autónomo escrito en Go, con SQLite, sesiones por cookie, configuración vía JSON, y un sistema de comentarios anidados con podado inteligente.
 
 ## Características
 
@@ -16,14 +16,14 @@ Un foro minimalista y autónomo escrito en Go, con almacenamiento en memoria, se
 - **Rate limiting** — Configurable por JSON: máximo de requests por ventana de tiempo.
 - **HTTPS** — Soporte nativo configurable vía JSON.
 - **Todo en backend** — Sin JavaScript, solo formularios HTML y redirecciones del servidor.
-- **Sin base de datos** — Todo en memoria, cero dependencias externas.
+- **SQLite** — Base de datos persistente con AUTOINCREMENT y WAL mode.
 
 ## Stack
 
 - **Lenguaje:** Go 1.25+
-- **Dependencias:** Solo `golang.org/x/crypto` para bcrypt.
+- **Dependencias:** `golang.org/x/crypto` (bcrypt) y `github.com/mattn/go-sqlite3`.
 - **Frontend:** HTML templates (`html/template`) sin JavaScript ni frameworks.
-- **Sin base de datos** — Persistencia mínima en archivo JSON.
+- **Base de datos:** SQLite con WAL mode.
 
 ## Instalación y uso
 
@@ -46,7 +46,7 @@ El servidor corre en `http://localhost:8080` (puerto configurable).
 | `rate_limit` | Máximo de solicitudes por ventana de tiempo | `100` |
 | `reset_minutes` | Minutos para reiniciar el contador de rate limit | `1` |
 | `port` | Puerto del servidor | `8080` |
-| `data_file` | Ruta del archivo de persistencia del foro | `forum.json` |
+| `db_path` | Ruta al archivo de base de datos SQLite | `forum.db` |
 | `https` | Habilitar HTTPS | `false` |
 | `cert_file` | Ruta al certificado SSL | `cert.pem` |
 | `key_file` | Ruta a la llave SSL | `key.pem` |
@@ -57,8 +57,9 @@ El servidor corre en `http://localhost:8080` (puerto configurable).
 
 ```
 linuxforum/
-├── main.go              # Servidor completo (single file, ~1200 líneas)
+├── main.go              # Servidor completo (single file, ~1100 líneas)
 ├── config.json          # Configuración general del servidor
+├── .gitignore
 ├── go.mod               # Módulo Go
 ├── go.sum               # Checksum de dependencias
 ├── README.md
@@ -110,7 +111,7 @@ linuxforum/
 | Title   | string | Título de la publicación  |
 | User    | string | Nombre del autor          |
 | Message | string | Contenido del post        |
-| Time    | string | Hora de publicación (HH:MM) |
+| Time    | string | Fecha y hora de publicación (YYYY-MM-DD HH:MM) |
 
 ### Comment
 
@@ -121,7 +122,7 @@ linuxforum/
 | ParentID | int    | ID del comentario padre (0 = raíz)       |
 | User     | string | Nombre del autor                         |
 | Message  | string | Contenido (o `[eliminado]` si borrado)   |
-| Time     | string | Hora de publicación (HH:MM)              |
+| Time     | string | Fecha y hora de publicación (YYYY-MM-DD HH:MM) |
 | Deleted  | bool   | Indica si el comentario fue eliminado    |
 
 ### User
@@ -142,7 +143,7 @@ linuxforum/
 - **Validación de entrada** — Títulos y mensajes no vacíos, nombres de usuario únicos, etc.
 - **Rate limiting** — Configurable vía `config.json` para evitar abusos.
 - **HTTPS** — Soporte nativo configurable vía `config.json`.
-- **Sin dependencias externas** — Solo bcrypt para hash de contraseñas, mínimo vector de ataque.
+- **SQLite** — Base de datos embebida con WAL mode para mejor concurrencia.
 
 ## Podado de comentarios
 
@@ -157,9 +158,8 @@ Esto evita que el árbol de comentarios se llene de `[eliminado]` innecesarios.
 
 ## Limitaciones
 
-- **Almacenamiento en memoria** — Los datos se pierden al reiniciar el servidor.
-- **Sin base de datos** — No hay persistencia ni migraciones.
-- **Tiempo sin fecha completa** — Solo se almacena HH:MM, no la fecha completa.
+- **Sin migraciones** — La base de datos se crea desde cero si no existe; no hay sistema de migraciones.
+- **Sin roles** — Todos los usuarios tienen el mismo nivel de permisos.
 
 ## Licencia
 

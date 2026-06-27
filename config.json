@@ -2,7 +2,7 @@
   "rate_limit": 100,
   "reset_minutes": 1,
   "port": 8080,
-  "data_file": "forum.json",
+  "db_path": "forum.db",
   "https": false,
   "cert_file": "cert.pem",
   "key_file": "key.pem",

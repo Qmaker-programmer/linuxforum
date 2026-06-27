@@ -1,0 +1,5 @@
+forum.json
+forum.db
+*.db
+*.db-wal
+*.db-shm
