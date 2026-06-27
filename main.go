@@ -1,13 +1,16 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"html/template"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -54,6 +57,41 @@ var sessions = make(map[string]string)
 
 const searchQueryCookie = "search_query"
 const commentSearchCookie = "comment_search_query"
+
+var requestCounts = make(map[string]int)
+var mu sync.Mutex
+
+const rateLimitPerMin = 100
+
+func rateLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := r.RemoteAddr
+		if idx := strings.LastIndex(ip, ":"); idx != -1 {
+			ip = ip[:idx]
+		}
+
+		mu.Lock()
+		count := requestCounts[ip]
+		if count >= rateLimitPerMin {
+			mu.Unlock()
+			http.Error(w, "Demasiadas solicitudes. Intenta de nuevo en un minuto.", http.StatusTooManyRequests)
+			return
+		}
+		requestCounts[ip] = count + 1
+		mu.Unlock()
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func resetRequestCounts() {
+	for {
+		time.Sleep(1 * time.Minute)
+		mu.Lock()
+		requestCounts = make(map[string]int)
+		mu.Unlock()
+	}
+}
 
 func getLoggedUser(r *http.Request) string {
 	cookie, err := r.Cookie("session_token")
@@ -938,6 +976,26 @@ func main() {
 		http.Redirect(w, r, returnURL, http.StatusSeeOther)
 	})
 
-	fmt.Println("Servidor corriendo en http://localhost:8080")
-	http.ListenAndServe(":8080", nil)
+	go resetRequestCounts()
+
+	wh := flag.Bool("wh", false, "habilitar HTTPS")
+	flag.Parse()
+
+	handler := rateLimitMiddleware(http.DefaultServeMux)
+
+	if *wh {
+		if _, err := os.Stat("cert.pem"); os.IsNotExist(err) {
+			fmt.Println("Error: No se encuentra cert.pem. Genera un certificado SSL.")
+			os.Exit(1)
+		}
+		if _, err := os.Stat("key.pem"); os.IsNotExist(err) {
+			fmt.Println("Error: No se encuentra key.pem. Genera un certificado SSL.")
+			os.Exit(1)
+		}
+		fmt.Println("Servidor corriendo con HTTPS en https://localhost:8080")
+		http.ListenAndServeTLS(":8080", "cert.pem", "key.pem", handler)
+	} else {
+		fmt.Println("Servidor corriendo en http://localhost:8080")
+		http.ListenAndServe(":8080", handler)
+	}
 }

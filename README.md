@@ -119,6 +119,8 @@ linuxforum/
 - **Confirmación de título** — Para eliminar un post, el usuario debe escribir el título exacto, evitando eliminaciones accidentales.
 - **Sesiones por cookie** — Identificador único por sesión, sin exposición de contraseñas.
 - **Validación de entrada** — Títulos y mensajes no vacíos, nombres de usuario únicos, etc.
+- **Rate limiting** — Máximo 100 solicitudes por minuto por IP para evitar abusos.
+- **HTTPS opcional** — Activable con la flag `-wh` (with https). Requiere `cert.pem` y `key.pem`.
 - **Sin dependencias externas** — Solo bcrypt para hash de contraseñas, mínimo vector de ataque.
 
 ## Podado de comentarios
@@ -136,11 +138,6 @@ Esto evita que el árbol de comentarios se llene de `[eliminado]` innecesarios.
 
 - **Almacenamiento en memoria** — Los datos se pierden al reiniciar el servidor.
 - **Sin base de datos** — No hay persistencia ni migraciones.
-- **Sin CSS** — La interfaz es funcional pero sin estilos.
-- **Sin JavaScript** — Toda la interactividad es mediante formul HTML y redirecciones.
-- **Sin CSRF** — No hay tokens CSRF en los formularios.
-- **Sin rate limiting** — No hay límite de peticiones.
-- **Sin HTTPS** — El servidor corre sobre HTTP plano.
 
 ## Licencia
 
