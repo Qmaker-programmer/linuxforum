@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -49,20 +48,90 @@ type User struct {
 	SavedPostIDs []int
 }
 
+type Session struct {
+	Username  string
+	ExpiresAt time.Time
+}
+
 var posts []Post
 var comments []Comment
 var nextID = 1
 var nextCommentID = 1
 var users = make(map[string]User)
-var sessions = make(map[string]string)
+var sessions = make(map[string]Session)
 
 const searchQueryCookie = "search_query"
 const commentSearchCookie = "comment_search_query"
 
+type Config struct {
+	RateLimit            int    `json:"rate_limit"`
+	ResetMinutes         int    `json:"reset_minutes"`
+	Port                 int    `json:"port"`
+	DataFile             string `json:"data_file"`
+	HTTPS                bool   `json:"https"`
+	CertFile             string `json:"cert_file"`
+	KeyFile              string `json:"key_file"`
+	SessionTokenName     string `json:"session_token_name"`
+	SessionExpireMinutes int    `json:"session_expire_minutes"`
+}
+
+var config Config
+
 var requestCounts = make(map[string]int)
 var mu sync.Mutex
 
-const rateLimitPerMin = 100
+func loadConfig() {
+	config = Config{
+		Port:                 8080,
+		DataFile:             "forum.json",
+		CertFile:             "cert.pem",
+		KeyFile:              "key.pem",
+		SessionTokenName:     "session_token",
+		RateLimit:            100,
+		ResetMinutes:         1,
+	}
+
+	f, err := os.Open("config.json")
+	if err != nil {
+		fmt.Println("Error al cargar config.json, usando valores por defecto:", err)
+		return
+	}
+	defer f.Close()
+	if err := json.NewDecoder(f).Decode(&config); err != nil {
+		fmt.Println("Error al decodificar config.json, usando valores por defecto:", err)
+		config = Config{
+			Port:                 8080,
+			DataFile:             "forum.json",
+			CertFile:             "cert.pem",
+			KeyFile:              "key.pem",
+			SessionTokenName:     "session_token",
+			RateLimit:            100,
+			ResetMinutes:         1,
+		}
+		return
+	}
+	if config.RateLimit <= 0 {
+		config.RateLimit = 100
+	}
+	if config.ResetMinutes <= 0 {
+		config.ResetMinutes = 1
+	}
+	if config.Port <= 0 {
+		config.Port = 8080
+	}
+	if config.DataFile == "" {
+		config.DataFile = "forum.json"
+	}
+	if config.CertFile == "" {
+		config.CertFile = "cert.pem"
+	}
+	if config.KeyFile == "" {
+		config.KeyFile = "key.pem"
+	}
+	if config.SessionTokenName == "" {
+		config.SessionTokenName = "session_token"
+	}
+}
 
 func rateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +142,7 @@ func rateLimitMiddleware(next http.Handler) http.Handler {
 
 		mu.Lock()
 		count := requestCounts[ip]
-		if count >= rateLimitPerMin {
+		if count >= config.RateLimit {
 			mu.Unlock()
 			http.Error(w, "Demasiadas solicitudes. Intenta de nuevo en un minuto.", http.StatusTooManyRequests)
 			return
@@ -87,14 +156,36 @@ func rateLimitMiddleware(next http.Handler) http.Handler {
 
 func resetRequestCounts() {
 	for {
-		time.Sleep(1 * time.Minute)
+		time.Sleep(time.Duration(config.ResetMinutes) * time.Minute)
 		mu.Lock()
 		requestCounts = make(map[string]int)
 		mu.Unlock()
 	}
 }
 
-const dataFile = "forum.json"
+func sessionExpiry() time.Time {
+	if config.SessionExpireMinutes <= 0 {
+		return time.Time{}
+	}
+	return time.Now().Add(time.Duration(config.SessionExpireMinutes) * time.Minute)
+}
+
+func cleanupExpiredSessions() {
+	for {
+		time.Sleep(10 * time.Minute)
+		if config.SessionExpireMinutes <= 0 {
+			continue
+		}
+		now := time.Now()
+		mu.Lock()
+		for token, session := range sessions {
+			if now.After(session.ExpiresAt) {
+				delete(sessions, token)
+			}
+		}
+		mu.Unlock()
+	}
+}
 
 type persistedData struct {
 	Posts         []Post          `json:"posts"`
@@ -113,7 +204,7 @@ func saveData() {
 		Users:         users,
 	}
 
-	tmpFile := dataFile + ".tmp"
+	tmpFile := config.DataFile + ".tmp"
 	f, err := os.Create(tmpFile)
 	if err != nil {
 		fmt.Println("Error al guardar datos:", err)
@@ -129,13 +220,13 @@ func saveData() {
 		fmt.Println("Error al sincronizar datos:", err)
 		return
 	}
-	if err := os.Rename(tmpFile, dataFile); err != nil {
+	if err := os.Rename(tmpFile, config.DataFile); err != nil {
 		fmt.Println("Error al renombrar archivo temporal:", err)
 	}
 }
 
 func loadData() {
-	f, err := os.Open(dataFile)
+	f, err := os.Open(config.DataFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return
@@ -159,11 +250,19 @@ func loadData() {
 }
 
 func getLoggedUser(r *http.Request) string {
-	cookie, err := r.Cookie("session_token")
+	cookie, err := r.Cookie(config.SessionTokenName)
 	if err != nil {
 		return ""
 	}
-	return sessions[cookie.Value]
+	session, ok := sessions[cookie.Value]
+	if !ok {
+		return ""
+	}
+	if config.SessionExpireMinutes > 0 && time.Now().After(session.ExpiresAt) {
+		delete(sessions, cookie.Value)
+		return ""
+	}
+	return session.Username
 }
 
 func getSearchQueryFromCookie(r *http.Request) string {
@@ -342,9 +441,10 @@ func renameUser(oldName, newName string) error {
 			comments[i].User = newName
 		}
 	}
-	for token, uname := range sessions {
-		if uname == oldName {
-			sessions[token] = newName
+	for token, session := range sessions {
+		if session.Username == oldName {
+			session.Username = newName
+			sessions[token] = session
 		}
 	}
 	return nil
@@ -422,6 +522,7 @@ func deleteCommentAndPrune(commentID int) {
 }
 
 func main() {
+	loadConfig()
 	loadData()
 
 	if len(users) == 0 {
@@ -559,10 +660,13 @@ func main() {
 			}
 
 			token := strconv.FormatInt(time.Now().UnixNano(), 10)
-			sessions[token] = username
+			sessions[token] = Session{
+				Username:  username,
+				ExpiresAt: sessionExpiry(),
+			}
 
 			http.SetCookie(w, &http.Cookie{
-				Name:  "session_token",
+				Name:  config.SessionTokenName,
 				Value: token,
 				Path:  "/",
 			})
@@ -602,10 +706,13 @@ func main() {
 			}
 
 			token := strconv.FormatInt(time.Now().UnixNano(), 10)
-			sessions[token] = username
+			sessions[token] = Session{
+				Username:  username,
+				ExpiresAt: sessionExpiry(),
+			}
 
 			http.SetCookie(w, &http.Cookie{
-				Name:  "session_token",
+				Name:  config.SessionTokenName,
 				Value: token,
 				Path:  "/",
 			})
@@ -617,12 +724,12 @@ func main() {
 	})
 
 	http.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie("session_token")
+		cookie, err := r.Cookie(config.SessionTokenName)
 		if err == nil {
 			delete(sessions, cookie.Value)
 		}
 		http.SetCookie(w, &http.Cookie{
-			Name:   "session_token",
+			Name:   config.SessionTokenName,
 			Value:  "",
 			Path:   "/",
 			MaxAge: -1,
@@ -1055,25 +1162,24 @@ func main() {
 	})
 
 	go resetRequestCounts()
-
-	wh := flag.Bool("wh", false, "habilitar HTTPS")
-	flag.Parse()
+	go cleanupExpiredSessions()
 
 	handler := rateLimitMiddleware(http.DefaultServeMux)
 
-	if *wh {
-		if _, err := os.Stat("cert.pem"); os.IsNotExist(err) {
-			fmt.Println("Error: No se encuentra cert.pem. Genera un certificado SSL.")
+	addr := fmt.Sprintf(":%d", config.Port)
+	if config.HTTPS {
+		if _, err := os.Stat(config.CertFile); os.IsNotExist(err) {
+			fmt.Println("Error: No se encuentra", config.CertFile, ". Genera un certificado SSL.")
 			os.Exit(1)
 		}
-		if _, err := os.Stat("key.pem"); os.IsNotExist(err) {
-			fmt.Println("Error: No se encuentra key.pem. Genera un certificado SSL.")
+		if _, err := os.Stat(config.KeyFile); os.IsNotExist(err) {
+			fmt.Println("Error: No se encuentra", config.KeyFile, ". Genera un certificado SSL.")
 			os.Exit(1)
 		}
-		fmt.Println("Servidor corriendo con HTTPS en https://localhost:8080")
-		http.ListenAndServeTLS(":8080", "cert.pem", "key.pem", handler)
+		fmt.Println("Servidor corriendo con HTTPS en https://localhost" + addr)
+		http.ListenAndServeTLS(addr, config.CertFile, config.KeyFile, handler)
 	} else {
-		fmt.Println("Servidor corriendo en http://localhost:8080")
-		http.ListenAndServe(":8080", handler)
+		fmt.Println("Servidor corriendo en http://localhost" + addr)
+		http.ListenAndServe(addr, handler)
 	}
 }
