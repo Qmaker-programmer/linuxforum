@@ -7,6 +7,38 @@
 
 body {
   margin: 20px;
+  background: #fff;
+  color: #000;
+}
+
+a {
+  color: #00e;
+  text-decoration: underline;
+}
+
+a:visited {
+  color: #551a8b;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #1e1e1e;
+    color: #ddd;
+  }
+
+  a {
+    color: #88f;
+  }
+
+  a:visited {
+    color: #b38bdb;
+  }
+
+  input, textarea, select, button {
+    background: #2d2d2d;
+    color: #ddd;
+    border-color: #555;
+  }
 }
 
 h1 { font-size: 28px; margin: 16px 0; }
@@ -16,10 +48,6 @@ h4 { font-size: 18px; margin: 10px 0; }
 
 p {
   margin: 8px 0;
-}
-
-a {
-  text-decoration: underline;
 }
 
 small {
