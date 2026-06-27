@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>{{.ProfileUser.Username}} - Linux Forum</title>
+</head>
+<body>
+
+    {{template "upbar" .}}
+
+    <a href="/">&lt;- Volver al inicio</a>
+
+    <h2>{{.ProfileUser.Username}}</h2>
+
+    {{if .ProfileUser.Description}}
+        <pre>{{.ProfileUser.Description}}</pre>
+    {{else}}
+        <p><em>Sin descripción.</em></p>
+    {{end}}
+
+    <h3>Publicaciones</h3>
+    <ul>
+    {{range .Posts}}
+        <li>
+            <a href="/view?id={{.ID}}&from=profile"><strong>{{.Title}}</strong></a>
+            <small>a las {{.Time}}</small>
+        </li>
+    {{else}}
+        <p>Este usuario aún no ha publicado nada.</p>
+    {{end}}
+    </ul>
+
+    {{if .IsOwnProfile}}
+        <h3>Guardados</h3>
+        <ul>
+        {{range .SavedPosts}}
+            <li>
+                <a href="/view?id={{.ID}}&from=profile"><strong>{{.Title}}</strong></a>
+                <small>por <a href="/user?u={{.User}}">{{.User}}</a> a las {{.Time}}</small>
+                <form action="/unsave" method="POST">
+                    <input type="hidden" name="post_id" value="{{.ID}}">
+                    <input type="hidden" name="return" value="/user?u={{$.ProfileUser.Username}}">
+                    <button type="submit">Quitar</button>
+                </form>
+            </li>
+        {{else}}
+            <p>No tienes posts guardados.</p>
+        {{end}}
+        </ul>
+
+        <hr>
+        <h3>Editar perfil</h3>
+        {{if .Error}}
+            <p><strong>{{.Error}}</strong></p>
+        {{end}}
+        <form action="/profile" method="POST">
+            <label>Nombre de usuario:<br>
+                <input type="text" name="username" value="{{.ProfileUser.Username}}" required>
+            </label><br><br>
+            <label>Descripción:<br>
+                <textarea name="description" rows="4" cols="50" placeholder="Cuéntanos sobre ti...">{{.ProfileUser.Description}}</textarea>
+            </label><br><br>
+            <button type="submit">Guardar cambios</button>
+        </form>
+    {{end}}
+
+    <hr>
+</body>
+</html>

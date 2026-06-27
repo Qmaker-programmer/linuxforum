@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="es">
+{{template "head" .}}
+<body>
+
+    {{template "upbar" .}}
+    
+    <h3>Discusiones Recientes</h3>
+    <div id="forum-posts">
+        <ul>
+        {{range .Posts}}
+            <li>
+                <a href="/view?id={{.ID}}&from=home"><strong>{{.Title}}</strong></a>
+                <small>por <a href="/user?u={{.User}}">{{.User}}</a> a las {{.Time}}</small>
+            </li>
+        {{end}}
+        </ul>
+    </div>
+
+    <hr>
+
+</body>
+</html>

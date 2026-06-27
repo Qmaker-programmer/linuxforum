@@ -1,0 +1,23 @@
+{{define "upbar"}}
+    <div class="upbar">
+        <img src="/web/tux.png" alt="tux" width="75">
+        <h2><a href="/">Linux Forums</a></h2>
+        <a href="/">Inicio -></a><br>
+        {{if .LoggedUser}}
+            <p>Hola, <a href="/user?u={{.LoggedUser}}"><strong>{{.LoggedUser}}</strong></a></p>
+            <a href="/web/public.html">Publicar algo -></a><br>
+            <a href="/logout">Cerrar sesión</a>
+        {{else}}
+            <a href="/web/login.html">Iniciar sesión -></a>
+        {{end}}
+        <hr>
+
+        <h3>Buscar publicaciones</h3>
+        <form action="/search" method="GET">
+            <input type="text" name="query" placeholder="Buscar por título..." value="{{.Query}}" required>
+            <button type="submit">Buscar</button>
+        </form>
+
+        <hr>
+    </div>
+{{end}}

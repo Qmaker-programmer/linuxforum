@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="es">
+{{template "head" .}}
+<body>
+
+    {{template "upbar" .}}
+
+    {{if eq .From "search"}}
+        <a href="/search?query={{.SearchQuery}}">&lt;- Volver a la búsqueda: "{{.SearchQuery}}"</a>
+    {{else if eq .From "profile"}}
+        <a href="/user?u={{.Post.User}}">&lt;- Volver al perfil de {{.Post.User}}</a>
+    {{else}}
+        <a href="/">&lt;- Volver a los posts</a>
+    {{end}}
+    
+    <article>
+        <h1>{{.Post.Title}}</h1>
+        <p><small>Publicado por <a href="/user?u={{.Post.User}}"><strong>{{.Post.User}}</strong></a> a las {{.Post.Time}}</small></p>
+        <hr>
+        <p>{{.Post.Message}}</p>
+    </article>
+
+    {{if .LoggedUser}}
+        {{if .IsSaved}}
+            <form action="/unsave" method="POST">
+                <input type="hidden" name="post_id" value="{{.Post.ID}}">
+                <input type="hidden" name="return" value="/view?id={{.Post.ID}}&from={{.From}}&query={{.SearchQuery}}">
+                <button type="submit">Quitar de guardados</button>
+            </form>
+        {{else}}
+            <form action="/save" method="POST">
+                <input type="hidden" name="post_id" value="{{.Post.ID}}">
+                <input type="hidden" name="return" value="/view?id={{.Post.ID}}&from={{.From}}&query={{.SearchQuery}}">
+                <button type="submit">Guardar</button>
+            </form>
+        {{end}}
+        {{if .IsAuthor}}
+            <form action="/confirm" method="GET">
+                <input type="hidden" name="id" value="{{.Post.ID}}">
+                <button type="submit">Eliminar post</button>
+            </form>
+        {{end}}
+    {{end}}
+
+    <hr>
+
+    <h3>Comentarios</h3>
+
+    <h4>Buscar en comentarios</h4>
+    <form action="/view" method="GET">
+        <input type="hidden" name="id" value="{{.Post.ID}}">
+        <input type="text" name="cquery" placeholder="Buscar en comentarios..." value="{{.CommentQuery}}">
+        <button type="submit">Buscar</button>
+    </form>
+    {{if .CommentQuery}}
+        <p><a href="/view?id={{.Post.ID}}&clear_cquery=1">Limpiar búsqueda de comentarios</a></p>
+    {{end}}
+
+    {{if .CommentQuery}}
+        <h4>Resultados en comentarios: "{{.CommentQuery}}"</h4>
+        <ul>
+        {{range .MatchedComments}}
+            <li>
+                <strong><a href="/user?u={{.User}}">{{.User}}</a></strong> a las {{.Time}}:<br>
+                {{if .Deleted}}<em>[eliminado]</em>{{else}}{{.Message}}{{end}}
+            </li>
+        {{else}}
+            <p>Ningún comentario coincide con tu búsqueda.</p>
+        {{end}}
+        </ul>
+        <hr>
+    {{end}}
+
+    {{if not .CommentQuery}}
+        <ul>
+        {{range .CommentTree}}
+            {{template "comment" .}}
+        {{else}}
+            <p>Aún no hay comentarios.{{if .LoggedUser}} ¡Sé el primero!{{end}}</p>
+        {{end}}
+        </ul>
+    {{end}}
+
+    {{if .LoggedUser}}
+        <h4>Dejar un comentario</h4>
+        <form action="/comment" method="POST">
+            <input type="hidden" name="post_id" value="{{.Post.ID}}">
+            <input type="hidden" name="parent_id" value="0">
+            <textarea name="message" rows="3" placeholder="Escribe tu comentario..." required></textarea><br><br>
+            <button type="submit">Comentar</button>
+        </form>
+    {{else}}
+        <p><a href="/web/login.html">Inicia sesión</a> para comentar.</p>
+    {{end}}
+
+    <hr>
+</body>
+</html>
+
+{{define "comment"}}
+    <li>
+        <p><strong><a href="/user?u={{.Comment.User}}">{{.Comment.User}}</a></strong> · {{.Comment.Time}}</p>
+        {{if .Comment.Deleted}}
+            <p><em>[eliminado]</em></p>
+        {{else}}
+            <p>{{.Comment.Message}}</p>
+            {{if .LoggedUser}}
+                <form action="/comment" method="POST">
+                    <input type="hidden" name="post_id" value="{{.PostID}}">
+                    <input type="hidden" name="parent_id" value="{{.Comment.ID}}">
+                    <textarea name="message" rows="2" placeholder="Responder..." required></textarea><br>
+                    <button type="submit">Responder</button>
+                </form>
+            {{end}}
+        {{end}}
+        {{if not .Comment.Deleted}}
+            {{if .LoggedUser}}
+                {{if eq .LoggedUser .Comment.User}}
+                    <form action="/delete-comment" method="POST">
+                        <input type="hidden" name="comment_id" value="{{.Comment.ID}}">
+                        <input type="hidden" name="post_id" value="{{.PostID}}">
+                        <button type="submit">Eliminar</button>
+                    </form>
+                {{end}}
+            {{end}}
+        {{end}}
+        {{if .Children}}
+            <ul>
+            {{range .Children}}
+                {{template "comment" .}}
+            {{end}}
+            </ul>
+        {{end}}
+    </li>
+{{end}}

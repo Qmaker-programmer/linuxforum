@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+{{template "head" .}}
+<body>
+
+    {{template "upbar" .}}
+
+    <a href="/">&lt;- Volver al inicio</a>
+
+    <h3>Iniciar Sesión</h3>
+    <form action="/auth" method="POST">
+        <input type="hidden" name="action" value="login">
+        Usuario:<br>
+        <input type="text" name="username" placeholder="Usuario" value="{{.LoginUsername}}" required><br>
+        {{if .LoginUserError}}<font color="red">{{.LoginUserError}}</font><br>{{end}}
+        <br>
+        Contraseña:<br>
+        <input type="password" name="password" placeholder="Contraseña" required><br>
+        {{if .LoginPassError}}<font color="red">{{.LoginPassError}}</font><br>{{end}}
+        <br>
+        <button type="submit">Ingresar</button>
+    </form>
+
+    <br><hr><br>
+
+    <h3>¿No tienes cuenta? Regístrate aquí</h3>
+    <form action="/auth" method="POST">
+        <input type="hidden" name="action" value="register">
+        Usuario:<br>
+        <input type="text" name="username" placeholder="Elige un usuario" value="{{.RegisterUsername}}" required><br>
+        {{if .RegisterUserError}}<font color="red">{{.RegisterUserError}}</font><br>{{end}}
+        <br>
+        Contraseña:<br>
+        <input type="password" name="password" placeholder="Elige una contraseña" required><br>
+        {{if .RegisterPassError}}<font color="red">{{.RegisterPassError}}</font><br>{{end}}
+        <br>
+        <button type="submit">Crear Cuenta</button>
+    </form>
+</body>
+</html>

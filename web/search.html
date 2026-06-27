@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="es">
+{{template "head" .}}
+<body>
+
+    {{template "upbar" .}}
+    <a href="/">&lt;- Volver al inicio</a>
+
+    {{if .Query}}
+        <h3>Resultados para la búsqueda de publicaciones: "{{.Query}}"</h3>
+        <div id="search-results">
+            <ul>
+            {{range .Posts}}
+                <li>
+                    <a href="/view?id={{.ID}}&from=search&query={{$.Query}}"><strong>{{.Title}}</strong></a> 
+                    <small>por <a href="/user?u={{.User}}">{{.User}}</a> a las {{.Time}}</small>
+                </li>
+            {{else}}
+                <p>No se encontraron publicaciones que coincidan con tu búsqueda.</p>
+            {{end}}
+            </ul>
+        </div>
+    {{end}}
+
+    {{if .UserQuery}}
+        <h3>Resultados para la búsqueda de usuarios: "{{.UserQuery}}"</h3>
+        <div id="user-results">
+            <ul>
+            {{range .Users}}
+                <li>
+                    <a href="/user?u={{.}}"><strong>{{.}}</strong></a>
+                </li>
+            {{else}}
+                <p>No se encontraron usuarios que coincidan con tu búsqueda.</p>
+            {{end}}
+            </ul>
+        </div>
+    {{end}}
+
+    <hr>
+
+</body>
+</html>
