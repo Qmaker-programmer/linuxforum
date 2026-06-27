@@ -1,13 +1,23 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"html/template"
 	"net/http"
 	"net/url"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+)
+
+const (
+	maxTitleLength       = 200
+	maxMessageLength     = 10000
+	maxDescriptionLength = 2000
+	maxUsernameLength    = 50
 )
 
 func renderPage(w http.ResponseWriter, pageFile string, data any) {
@@ -21,20 +31,53 @@ func renderPage(w http.ResponseWriter, pageFile string, data any) {
 	}
 }
 
-func getLoggedUser(r *http.Request) string {
+func generateCSRFToken() string {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	return hex.EncodeToString(b)
+}
+
+func getSession(r *http.Request) *Session {
 	cookie, err := r.Cookie(config.SessionTokenName)
 	if err != nil {
-		return ""
+		return nil
 	}
+	mu.Lock()
 	session, ok := sessions[cookie.Value]
+	mu.Unlock()
 	if !ok {
-		return ""
+		return nil
 	}
 	if config.SessionExpireMinutes > 0 && time.Now().After(session.ExpiresAt) {
+		mu.Lock()
 		delete(sessions, cookie.Value)
+		mu.Unlock()
+		return nil
+	}
+	return &session
+}
+
+func getLoggedUser(r *http.Request) string {
+	s := getSession(r)
+	if s == nil {
 		return ""
 	}
-	return session.Username
+	return s.Username
+}
+
+func getCSRFToken(r *http.Request) string {
+	s := getSession(r)
+	if s == nil {
+		return ""
+	}
+	return s.CSRFToken
+}
+
+func validateCSRF(r *http.Request) bool {
+	token := r.FormValue("csrf_token")
+	return token != "" && token == getCSRFToken(r)
 }
 
 func getTheme(r *http.Request) string {
@@ -106,7 +149,7 @@ func redirectToLogin(w http.ResponseWriter, r *http.Request, params url.Values) 
 	http.Redirect(w, r, "/web/login.html?"+params.Encode(), http.StatusSeeOther)
 }
 
-func buildCommentTree(all []Comment, parentID, postID int, loggedUser string) []*CommentNode {
+func buildCommentTree(all []Comment, parentID, postID int, loggedUser, csrfToken string) []*CommentNode {
 	var nodes []*CommentNode
 	for _, c := range all {
 		if c.ParentID == parentID {
@@ -114,7 +157,8 @@ func buildCommentTree(all []Comment, parentID, postID int, loggedUser string) []
 				Comment:    c,
 				PostID:     postID,
 				LoggedUser: loggedUser,
-				Children:   buildCommentTree(all, c.ID, postID, loggedUser),
+				CSRFToken:  csrfToken,
+				Children:   buildCommentTree(all, c.ID, postID, loggedUser, csrfToken),
 			})
 		}
 	}

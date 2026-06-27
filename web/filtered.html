@@ -24,7 +24,7 @@
         <ul>
         {{range .Posts}}
             <li>
-                <a href="/view?id={{.ID}}&from=filtered"><strong>{{.Title}}</strong></a>
+                <a href="/view?id={{.ID}}&from=filtered&sort_by={{$.SortBy}}&order={{$.Order}}"><strong>{{.Title}}</strong></a>
                 <small>por <a href="/user?u={{.User}}">{{.User}}</a> a las {{.Time}}</small>
             </li>
         {{end}}

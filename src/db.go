@@ -164,8 +164,9 @@ func getUser(username string) *User {
 		defer rows.Close()
 		for rows.Next() {
 			var id int
-			rows.Scan(&id)
-			u.SavedPostIDs = append(u.SavedPostIDs, id)
+			if err := rows.Scan(&id); err == nil {
+				u.SavedPostIDs = append(u.SavedPostIDs, id)
+			}
 		}
 	}
 	return &u
@@ -195,12 +196,14 @@ func renameUser(oldName, newName string) error {
 		return fmt.Errorf("Error al renombrar usuario")
 	}
 
+	mu.Lock()
 	for token, session := range sessions {
 		if session.Username == oldName {
 			session.Username = newName
 			sessions[token] = session
 		}
 	}
+	mu.Unlock()
 	return nil
 }
 

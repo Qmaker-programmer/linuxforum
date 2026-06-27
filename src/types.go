@@ -29,6 +29,7 @@ type CommentNode struct {
 	Children   []*CommentNode
 	PostID     int
 	LoggedUser string
+	CSRFToken  string
 }
 
 type User struct {
@@ -41,6 +42,7 @@ type User struct {
 type Session struct {
 	Username  string
 	ExpiresAt time.Time
+	CSRFToken string
 }
 
 type Config struct {

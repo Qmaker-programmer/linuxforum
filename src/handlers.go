@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -50,7 +49,8 @@ func handlePublic(w http.ResponseWriter, r *http.Request) {
 		Query      string
 		LoggedUser string
 		Theme      string
-	}{Query: query, LoggedUser: loggedUser, Theme: getTheme(r)})
+		CSRFToken  string
+	}{Query: query, LoggedUser: loggedUser, Theme: getTheme(r), CSRFToken: getCSRFToken(r)})
 }
 
 func handleHome(w http.ResponseWriter, r *http.Request) {
@@ -75,11 +75,15 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 
 func handleFiltered(w http.ResponseWriter, r *http.Request) {
 	sortBy := r.URL.Query().Get("sort_by")
-	if sortBy == "" {
+	switch sortBy {
+	case "date", "title":
+	default:
 		sortBy = "date"
 	}
 	order := r.URL.Query().Get("order")
-	if order == "" {
+	switch order {
+	case "asc", "desc":
+	default:
 		order = "asc"
 	}
 
@@ -141,17 +145,21 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 		db.Exec("INSERT INTO users (username, password, description) VALUES (?, ?, ?)", username, string(hashed), "")
 
 		token := strconv.FormatInt(time.Now().UnixNano(), 10)
+		mu.Lock()
 		sessions[token] = Session{
 			Username:  username,
 			ExpiresAt: sessionExpiry(),
+			CSRFToken: generateCSRFToken(),
 		}
+		mu.Unlock()
 
 		http.SetCookie(w, &http.Cookie{
-			Name:  config.SessionTokenName,
-			Value: token,
-			Path:  "/",
+			Name:     config.SessionTokenName,
+			Value:    token,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
 		})
-		fmt.Println("Usuario registrado con éxito de forma encriptada.")
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
@@ -186,15 +194,20 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 		}
 
 		token := strconv.FormatInt(time.Now().UnixNano(), 10)
+		mu.Lock()
 		sessions[token] = Session{
 			Username:  username,
 			ExpiresAt: sessionExpiry(),
+			CSRFToken: generateCSRFToken(),
 		}
+		mu.Unlock()
 
 		http.SetCookie(w, &http.Cookie{
-			Name:  config.SessionTokenName,
-			Value: token,
-			Path:  "/",
+			Name:     config.SessionTokenName,
+			Value:    token,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
 		})
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
@@ -206,13 +219,16 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 func handleLogout(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie(config.SessionTokenName)
 	if err == nil {
+		mu.Lock()
 		delete(sessions, cookie.Value)
+		mu.Unlock()
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name:   config.SessionTokenName,
-		Value:  "",
-		Path:   "/",
-		MaxAge: -1,
+		Name:     config.SessionTokenName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
 	})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
@@ -224,14 +240,29 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Debes iniciar sesión para publicar", http.StatusUnauthorized)
 			return
 		}
-
-		title := r.FormValue("title")
-		message := r.FormValue("message")
-
-		if title != "" && message != "" {
-			now := time.Now().Format("2006-01-02 15:04")
-			db.Exec("INSERT INTO posts (title, user, message, created_at) VALUES (?, ?, ?, ?)", title, username, message, now)
+		if !validateCSRF(r) {
+			http.Error(w, "CSRF token inválido", http.StatusForbidden)
+			return
 		}
+
+		title := strings.TrimSpace(r.FormValue("title"))
+		message := strings.TrimSpace(r.FormValue("message"))
+
+		if title == "" || message == "" {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		if len(title) > maxTitleLength {
+			http.Error(w, "El título es demasiado largo", http.StatusBadRequest)
+			return
+		}
+		if len(message) > maxMessageLength {
+			http.Error(w, "El mensaje es demasiado largo", http.StatusBadRequest)
+			return
+		}
+
+		now := time.Now().Format("2006-01-02 15:04")
+		db.Exec("INSERT INTO posts (title, user, message, created_at) VALUES (?, ?, ?, ?)", title, username, message, now)
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
@@ -263,9 +294,18 @@ func handleComment(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if !validateCSRF(r) {
+		http.Error(w, "CSRF token inválido", http.StatusForbidden)
+		return
+	}
+
 	message := strings.TrimSpace(r.FormValue("message"))
 	if message == "" {
 		http.Redirect(w, r, "/view?id="+strconv.Itoa(postID), http.StatusSeeOther)
+		return
+	}
+	if len(message) > maxMessageLength {
+		http.Error(w, "El mensaje es demasiado largo", http.StatusBadRequest)
 		return
 	}
 
@@ -290,6 +330,11 @@ func handleDeleteComment(w http.ResponseWriter, r *http.Request) {
 	commentID, err := strconv.Atoi(r.FormValue("comment_id"))
 	if err != nil {
 		http.Error(w, "Comentario no válido", http.StatusBadRequest)
+		return
+	}
+
+	if !validateCSRF(r) {
+		http.Error(w, "CSRF token inválido", http.StatusForbidden)
 		return
 	}
 
@@ -388,6 +433,19 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 		searchQuery = getSearchQueryFromCookie(r)
 	}
 
+	sortBy := r.URL.Query().Get("sort_by")
+	switch sortBy {
+	case "date", "title":
+	default:
+		sortBy = "date"
+	}
+	order := r.URL.Query().Get("order")
+	switch order {
+	case "asc", "desc":
+	default:
+		order = "asc"
+	}
+
 	commentQuery := r.URL.Query().Get("cquery")
 	if commentQuery != "" {
 		setCommentSearchCookie(w, commentQuery)
@@ -416,6 +474,9 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 		CommentQuery    string
 		CommentTree     []*CommentNode
 		MatchedComments []Comment
+		CSRFToken       string
+		SortBy          string
+		Order           string
 	}{
 		Post:            foundPost,
 		From:            fromPage,
@@ -426,8 +487,11 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 		IsSaved:         isPostSaved(loggedUser, id),
 		IsAuthor:        loggedUser == foundPost.User,
 		CommentQuery:    commentQuery,
-		CommentTree:     buildCommentTree(postComments, 0, id, loggedUser),
+		CommentTree:     buildCommentTree(postComments, 0, id, loggedUser, getCSRFToken(r)),
 		MatchedComments: filterComments(postComments, commentQuery),
+		CSRFToken:       getCSRFToken(r),
+		SortBy:          sortBy,
+		Order:           order,
 	})
 }
 
@@ -456,6 +520,10 @@ func handleConfirm(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/web/login.html", http.StatusSeeOther)
 			return
 		}
+		if !validateCSRF(r) {
+			http.Error(w, "CSRF token inválido", http.StatusForbidden)
+			return
+		}
 		if post.User != loggedUser {
 			http.Error(w, "No eres el autor de este post", http.StatusForbidden)
 			return
@@ -481,12 +549,14 @@ func handleConfirm(w http.ResponseWriter, r *http.Request) {
 		Theme      string
 		Post       *Post
 		Error      string
+		CSRFToken  string
 	}{
 		Query:      query,
 		LoggedUser: loggedUser,
 		Theme:      getTheme(r),
 		Post:       post,
 		Error:      r.URL.Query().Get("error"),
+		CSRFToken:  getCSRFToken(r),
 	})
 }
 
@@ -515,6 +585,7 @@ func handleUser(w http.ResponseWriter, r *http.Request) {
 		SavedPosts   []Post
 		IsOwnProfile bool
 		Error        string
+		CSRFToken    string
 	}{
 		Query:        query,
 		LoggedUser:   loggedUser,
@@ -523,6 +594,7 @@ func handleUser(w http.ResponseWriter, r *http.Request) {
 		Posts:        getUserPosts(username),
 		IsOwnProfile: isOwn,
 		Error:        r.URL.Query().Get("error"),
+		CSRFToken:    getCSRFToken(r),
 	}
 	if isOwn {
 		data.SavedPosts = getSavedPosts(username)
@@ -543,11 +615,20 @@ func handleProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !validateCSRF(r) {
+		http.Error(w, "CSRF token inválido", http.StatusForbidden)
+		return
+	}
+
 	newUsername := strings.TrimSpace(r.FormValue("username"))
 	description := r.FormValue("description")
 
-	if newUsername == "" {
-		http.Redirect(w, r, "/user?u="+url.QueryEscape(loggedUser)+"&error="+url.QueryEscape("El nombre no puede estar vacío."), http.StatusSeeOther)
+	if newUsername == "" || len(newUsername) > maxUsernameLength {
+		http.Redirect(w, r, "/user?u="+url.QueryEscape(loggedUser)+"&error="+url.QueryEscape("Nombre inválido (vacío o demasiado largo)."), http.StatusSeeOther)
+		return
+	}
+	if len(description) > maxDescriptionLength {
+		http.Redirect(w, r, "/user?u="+url.QueryEscape(loggedUser)+"&error="+url.QueryEscape("La descripción es demasiado larga."), http.StatusSeeOther)
 		return
 	}
 
@@ -572,6 +653,10 @@ func handleSave(w http.ResponseWriter, r *http.Request) {
 	loggedUser := getLoggedUser(r)
 	if loggedUser == "" {
 		http.Error(w, "Debes iniciar sesión", http.StatusUnauthorized)
+		return
+	}
+	if !validateCSRF(r) {
+		http.Error(w, "CSRF token inválido", http.StatusForbidden)
 		return
 	}
 
@@ -601,6 +686,10 @@ func handleUnsave(w http.ResponseWriter, r *http.Request) {
 	loggedUser := getLoggedUser(r)
 	if loggedUser == "" {
 		http.Error(w, "Debes iniciar sesión", http.StatusUnauthorized)
+		return
+	}
+	if !validateCSRF(r) {
+		http.Error(w, "CSRF token inválido", http.StatusForbidden)
 		return
 	}
 
