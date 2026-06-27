@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"html/template"
@@ -91,6 +92,70 @@ func resetRequestCounts() {
 		requestCounts = make(map[string]int)
 		mu.Unlock()
 	}
+}
+
+const dataFile = "forum.json"
+
+type persistedData struct {
+	Posts         []Post          `json:"posts"`
+	Comments      []Comment       `json:"comments"`
+	NextID        int             `json:"next_id"`
+	NextCommentID int             `json:"next_comment_id"`
+	Users         map[string]User `json:"users"`
+}
+
+func saveData() {
+	data := persistedData{
+		Posts:         posts,
+		Comments:      comments,
+		NextID:        nextID,
+		NextCommentID: nextCommentID,
+		Users:         users,
+	}
+
+	tmpFile := dataFile + ".tmp"
+	f, err := os.Create(tmpFile)
+	if err != nil {
+		fmt.Println("Error al guardar datos:", err)
+		return
+	}
+	defer f.Close()
+
+	if err := json.NewEncoder(f).Encode(data); err != nil {
+		fmt.Println("Error al codificar datos:", err)
+		return
+	}
+	if err := f.Sync(); err != nil {
+		fmt.Println("Error al sincronizar datos:", err)
+		return
+	}
+	if err := os.Rename(tmpFile, dataFile); err != nil {
+		fmt.Println("Error al renombrar archivo temporal:", err)
+	}
+}
+
+func loadData() {
+	f, err := os.Open(dataFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
+		fmt.Println("Error al cargar datos:", err)
+		return
+	}
+	defer f.Close()
+
+	var data persistedData
+	if err := json.NewDecoder(f).Decode(&data); err != nil {
+		fmt.Println("Error al decodificar datos:", err)
+		return
+	}
+
+	posts = data.Posts
+	comments = data.Comments
+	nextID = data.NextID
+	nextCommentID = data.NextCommentID
+	users = data.Users
 }
 
 func getLoggedUser(r *http.Request) string {
@@ -357,22 +422,27 @@ func deleteCommentAndPrune(commentID int) {
 }
 
 func main() {
-	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("1234"), bcrypt.DefaultCost)
-	users["admin"] = User{
-		Username:     "admin",
-		Password:     string(hashedPassword),
-		Description:  "Administrador del foro.",
-		SavedPostIDs: []int{},
-	}
+	loadData()
 
-	posts = append(posts, Post{
-		ID:      nextID,
-		Title:   "¡Bienvenidos al nuevo foro!",
-		User:    "admin",
-		Message: "Este es el contenido completo del primer post de prueba.",
-		Time:    time.Now().Format("15:04"),
-	})
-	nextID++
+	if len(users) == 0 {
+		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("1234"), bcrypt.DefaultCost)
+		users["admin"] = User{
+			Username:     "admin",
+			Password:     string(hashedPassword),
+			Description:  "Administrador del foro.",
+			SavedPostIDs: []int{},
+		}
+
+		posts = append(posts, Post{
+			ID:      nextID,
+			Title:   "¡Bienvenidos al nuevo foro!",
+			User:    "admin",
+			Message: "Este es el contenido completo del primer post de prueba.",
+			Time:    time.Now().Format("15:04"),
+		})
+		nextID++
+		saveData()
+	}
 
 	renderPage := func(w http.ResponseWriter, pageFile string, data any) {
 		// Añadimos "web/head.html" a los archivos que se parsean
@@ -497,6 +567,7 @@ func main() {
 				Path:  "/",
 			})
 			fmt.Println("Usuario registrado con éxito de forma encriptada.")
+			saveData()
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
@@ -579,6 +650,7 @@ func main() {
 					Time:    time.Now().Format("15:04"),
 				})
 				nextID++
+				saveData()
 			}
 		}
 		http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -626,6 +698,7 @@ func main() {
 			Time:     time.Now().Format("15:04"),
 		})
 		nextCommentID++
+		saveData()
 
 		http.Redirect(w, r, "/view?id="+strconv.Itoa(postID), http.StatusSeeOther)
 	})
@@ -661,6 +734,7 @@ func main() {
 
 		postID := comment.PostID
 		deleteCommentAndPrune(commentID)
+		saveData()
 		http.Redirect(w, r, "/view?id="+strconv.Itoa(postID), http.StatusSeeOther)
 	})
 
@@ -818,6 +892,7 @@ func main() {
 				}
 			}
 			comments = keptComments
+			saveData()
 
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
@@ -906,6 +981,7 @@ func main() {
 		user := users[loggedUser]
 		user.Description = description
 		users[loggedUser] = user
+		saveData()
 
 		http.Redirect(w, r, "/user?u="+url.QueryEscape(loggedUser), http.StatusSeeOther)
 	})
@@ -932,6 +1008,7 @@ func main() {
 		if !isPostSaved(loggedUser, postID) {
 			user.SavedPostIDs = append(user.SavedPostIDs, postID)
 			users[loggedUser] = user
+			saveData()
 		}
 
 		returnURL := r.FormValue("return")
@@ -968,6 +1045,7 @@ func main() {
 		}
 		user.SavedPostIDs = kept
 		users[loggedUser] = user
+		saveData()
 
 		returnURL := r.FormValue("return")
 		if returnURL == "" {
