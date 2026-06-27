@@ -67,3 +67,21 @@ img {
 .upbar {
   margin-bottom: 20px;
 }
+
+.upbar h2,
+.upbar a,
+.upbar p,
+.upbar form {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 12px;
+}
+
+.upbar h3 {
+  display: inline-block;
+  margin-right: 4px;
+}
+
+.upbar br {
+  display: none;
+}
