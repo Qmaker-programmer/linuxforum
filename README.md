@@ -16,13 +16,14 @@ Un foro minimalista y autónomo escrito en Go, con SQLite, sesiones por cookie, 
 - **Rate limiting** — Configurable por JSON: máximo de requests por ventana de tiempo.
 - **HTTPS** — Soporte nativo configurable vía JSON.
 - **Todo en backend** — Sin JavaScript, solo formularios HTML y redirecciones del servidor.
+- **Dark mode** — Conmutable desde la upbar sin JS, vía cookie y CSS class, respeta la preferencia del sistema.
 - **SQLite** — Base de datos persistente con AUTOINCREMENT y WAL mode.
 
 ## Stack
 
 - **Lenguaje:** Go 1.25+
 - **Dependencias:** `golang.org/x/crypto` (bcrypt) y `github.com/mattn/go-sqlite3`.
-- **Frontend:** HTML templates (`html/template`) sin JavaScript ni frameworks.
+- **Frontend:** HTML templates (`html/template`), CSS plano (`style.css`) sin JavaScript ni frameworks.
 - **Base de datos:** SQLite con WAL mode.
 
 ## Instalación y uso
@@ -75,6 +76,7 @@ linuxforum/
     ├── login.html       # Inicio de sesión / registro
     ├── public.html      # Formulario de nuevo post
     ├── confirm.html     # Confirmación de eliminación de post
+    ├── style.css        # Estilos visuales
     └── tux.png          # Mascota Tux
 ```
 
@@ -94,6 +96,7 @@ linuxforum/
 | POST   | `/delete-comment` | Eliminar comentario (solo autor)          | Sí            |
 | POST   | `/confirm`        | Ejecutar eliminación de post (solo autor) | Sí            |
 | POST   | `/auth`           | Iniciar sesión / registrar cuenta         | No            |
+| GET    | `/theme?mode=X`   | Cambiar modo oscuro/claro vía cookie      | No            |
 | GET    | `/logout`         | Cerrar sesión                             | No            |
 | POST   | `/profile`        | Editar perfil (nombre, descripción)       | Sí            |
 | POST   | `/save`           | Guardar post como favorito                | Sí            |
