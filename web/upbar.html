@@ -10,6 +10,10 @@
         {{else}}
             <a href="/web/login.html">Iniciar sesión -></a>
         {{end}}
+        <form action="/theme" method="GET">
+            <input type="hidden" name="mode" value="{{if eq .Theme "dark"}}light{{else}}dark{{end}}">
+            <button type="submit">{{if eq .Theme "dark"}}Modo claro{{else}}Modo oscuro{{end}}</button>
+        </form>
         <hr>
 
         <h3>Buscar publicaciones</h3>

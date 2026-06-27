@@ -20,25 +20,26 @@ a:visited {
   color: #551a8b;
 }
 
-@media (prefers-color-scheme: dark) {
-  body {
-    background: #1e1e1e;
-    color: #ddd;
-  }
+body.dark {
+  background: #1e1e1e;
+  color: #ddd;
+}
 
-  a {
-    color: #88f;
-  }
+body.dark a {
+  color: #88f;
+}
 
-  a:visited {
-    color: #b38bdb;
-  }
+body.dark a:visited {
+  color: #b38bdb;
+}
 
-  input, textarea, select, button {
-    background: #2d2d2d;
-    color: #ddd;
-    border-color: #555;
-  }
+body.dark input,
+body.dark textarea,
+body.dark select,
+body.dark button {
+  background: #2d2d2d;
+  color: #ddd;
+  border-color: #555;
 }
 
 h1 { font-size: 28px; margin: 16px 0; }

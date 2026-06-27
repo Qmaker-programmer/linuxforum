@@ -294,6 +294,17 @@ func redirectToLogin(w http.ResponseWriter, r *http.Request, params url.Values) 
 	http.Redirect(w, r, "/web/login.html?"+params.Encode(), http.StatusSeeOther)
 }
 
+func getTheme(r *http.Request) string {
+	cookie, err := r.Cookie("theme")
+	if err != nil {
+		return ""
+	}
+	if cookie.Value == "dark" {
+		return "dark"
+	}
+	return ""
+}
+
 // --- Database access functions ---
 
 func getAllPosts() []Post {
@@ -613,6 +624,7 @@ func main() {
 		renderPage(w, "web/login.html", struct {
 			Query             string
 			LoggedUser        string
+			Theme             string
 			LoginUsername     string
 			RegisterUsername  string
 			LoginUserError    string
@@ -622,6 +634,7 @@ func main() {
 		}{
 			Query:             query,
 			LoggedUser:        loggedUser,
+			Theme:             getTheme(r),
 			LoginUsername:     r.URL.Query().Get("login_user"),
 			RegisterUsername:  r.URL.Query().Get("register_user"),
 			LoginUserError:    r.URL.Query().Get("login_user_error"),
@@ -640,7 +653,8 @@ func main() {
 		renderPage(w, "web/public.html", struct {
 			Query      string
 			LoggedUser string
-		}{Query: query, LoggedUser: loggedUser})
+			Theme      string
+		}{Query: query, LoggedUser: loggedUser, Theme: getTheme(r)})
 	})
 
 	fs := http.FileServer(http.Dir("./web"))
@@ -657,10 +671,12 @@ func main() {
 			Posts      []Post
 			Query      string
 			LoggedUser string
+			Theme      string
 		}{
 			Posts:      allPosts,
 			Query:      query,
 			LoggedUser: loggedUser,
+			Theme:      getTheme(r),
 		})
 	})
 
@@ -681,12 +697,14 @@ func main() {
 			Posts      []Post
 			Query      string
 			LoggedUser string
+			Theme      string
 			SortBy     string
 			Order      string
 		}{
 			Posts:      sorted,
 			Query:      query,
 			LoggedUser: loggedUser,
+			Theme:      getTheme(r),
 			SortBy:     sortBy,
 			Order:      order,
 		})
@@ -937,12 +955,14 @@ func main() {
 		matchedPosts = sortPosts(matchedPosts, sortBy, order)
 
 		_, loggedUser := pageContext(r)
+		theme := getTheme(r)
 		renderPage(w, "web/search.html", struct {
 			Query      string
 			Posts      []Post
 			Users      []string
 			UserQuery  string
 			LoggedUser string
+			Theme      string
 			SortBy     string
 			Order      string
 		}{
@@ -951,6 +971,7 @@ func main() {
 			Users:      matchedUsers,
 			UserQuery:  userQuery,
 			LoggedUser: loggedUser,
+			Theme:      theme,
 			SortBy:     sortBy,
 			Order:      order,
 		})
@@ -996,6 +1017,7 @@ func main() {
 			SearchQuery      string
 			Query            string
 			LoggedUser       string
+			Theme            string
 			IsSaved          bool
 			IsAuthor         bool
 			CommentQuery     string
@@ -1007,6 +1029,7 @@ func main() {
 			SearchQuery:     searchQuery,
 			Query:           query,
 			LoggedUser:      loggedUser,
+			Theme:           getTheme(r),
 			IsSaved:         isPostSaved(loggedUser, id),
 			IsAuthor:        loggedUser == foundPost.User,
 			CommentQuery:    commentQuery,
@@ -1062,11 +1085,13 @@ func main() {
 		renderPage(w, "web/confirm.html", struct {
 			Query      string
 			LoggedUser string
+			Theme      string
 			Post       *Post
 			Error      string
 		}{
 			Query:      query,
 			LoggedUser: loggedUser,
+			Theme:      getTheme(r),
 			Post:       post,
 			Error:      r.URL.Query().Get("error"),
 		})
@@ -1091,6 +1116,7 @@ func main() {
 		data := struct {
 			Query        string
 			LoggedUser   string
+			Theme        string
 			ProfileUser  User
 			Posts        []Post
 			SavedPosts   []Post
@@ -1099,6 +1125,7 @@ func main() {
 		}{
 			Query:        query,
 			LoggedUser:   loggedUser,
+			Theme:        getTheme(r),
 			ProfileUser:  *user,
 			Posts:        getUserPosts(username),
 			IsOwnProfile: isOwn,
@@ -1195,6 +1222,22 @@ func main() {
 		returnURL := r.FormValue("return")
 		if returnURL == "" {
 			returnURL = "/user?u=" + url.QueryEscape(loggedUser)
+		}
+		http.Redirect(w, r, returnURL, http.StatusSeeOther)
+	})
+
+	http.HandleFunc("/theme", func(w http.ResponseWriter, r *http.Request) {
+		mode := r.URL.Query().Get("mode")
+		if mode == "dark" || mode == "light" {
+			http.SetCookie(w, &http.Cookie{
+				Name:  "theme",
+				Value: mode,
+				Path:  "/",
+			})
+		}
+		returnURL := r.Header.Get("Referer")
+		if returnURL == "" {
+			returnURL = "/"
 		}
 		http.Redirect(w, r, returnURL, http.StatusSeeOther)
 	})
