@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -392,6 +393,25 @@ func filterComments(all []Comment, query string) []Comment {
 	return result
 }
 
+func sortPosts(posts []Post, sortBy, order string) []Post {
+	result := make([]Post, len(posts))
+	copy(result, posts)
+
+	sort.SliceStable(result, func(i, j int) bool {
+		var less bool
+		if sortBy == "title" {
+			less = strings.ToLower(result[i].Title) < strings.ToLower(result[j].Title)
+		} else {
+			less = result[i].Time < result[j].Time
+		}
+		if order == "desc" {
+			return !less
+		}
+		return less
+	})
+	return result
+}
+
 func getSavedPosts(username string) []Post {
 	user, ok := users[username]
 	if !ok {
@@ -615,6 +635,33 @@ func main() {
 			Posts:      posts,
 			Query:      query,
 			LoggedUser: loggedUser,
+		})
+	})
+
+	http.HandleFunc("/filtered", func(w http.ResponseWriter, r *http.Request) {
+		sortBy := r.URL.Query().Get("sort_by")
+		if sortBy == "" {
+			sortBy = "date"
+		}
+		order := r.URL.Query().Get("order")
+		if order == "" {
+			order = "asc"
+		}
+
+		query, loggedUser := pageContext(r)
+		sorted := sortPosts(posts, sortBy, order)
+		renderPage(w, "web/filtered.html", struct {
+			Posts      []Post
+			Query      string
+			LoggedUser string
+			SortBy     string
+			Order      string
+		}{
+			Posts:      sorted,
+			Query:      query,
+			LoggedUser: loggedUser,
+			SortBy:     sortBy,
+			Order:      order,
 		})
 	})
 
@@ -873,6 +920,17 @@ func main() {
 			}
 		}
 
+		sortBy := r.URL.Query().Get("sort_by")
+		if sortBy == "" {
+			sortBy = "date"
+		}
+		order := r.URL.Query().Get("order")
+		if order == "" {
+			order = "asc"
+		}
+
+		matchedPosts = sortPosts(matchedPosts, sortBy, order)
+
 		_, loggedUser := pageContext(r)
 		renderPage(w, "web/search.html", struct {
 			Query      string
@@ -880,12 +938,16 @@ func main() {
 			Users      []string
 			UserQuery  string
 			LoggedUser string
+			SortBy     string
+			Order      string
 		}{
 			Query:      searchQuery,
 			Posts:      matchedPosts,
 			Users:      matchedUsers,
 			UserQuery:  userQuery,
 			LoggedUser: loggedUser,
+			SortBy:     sortBy,
+			Order:      order,
 		})
 	})
 

@@ -1,17 +1,21 @@
 # Linux Forum
 
-Un foro minimalista y autónomo escrito en Go, con almacenamiento en memoria, sesiones por cookie, y un sistema de comentarios anidados con podado inteligente.
+Un foro minimalista y autónomo escrito en Go, con almacenamiento en memoria, sesiones por cookie, configuración vía JSON, y un sistema de comentarios anidados con podado inteligente.
 
 ## Características
 
-- **Publicaciones** — Creación, visualización y eliminación (solo autor, con confirmación del título).
+- **Publicaciones** — Creación, visualización, eliminación (solo autor, con confirmación del título) y filtrado por fecha/título.
+- **Filtrado** — Ordenar posts por fecha (asc/desc) o título (A-Z / Z-A) desde la página principal y desde los resultados de búsqueda.
 - **Comentarios anidados** — Respuestas en árbol con profundidad arbitraria.
 - **Podado inteligente** — Al eliminar un comentario, si todo su subárbol está muerto (solo `[eliminado]`), se elimina por completo, incluyendo ancestros muertos.
 - **Autenticación** — Registro e inicio de sesión con contraseñas hasheadas (bcrypt, coste por defecto).
-- **Sesiones** — Cookie `session_token` con identificador único (timestamp en nanosegundos).
+- **Sesiones** — Cookie configurable con soporte de expiración y limpieza automática de sesiones vencidas.
 - **Guardado de posts** — Marca posts como favoritos (solo visibles para el usuario).
 - **Búsquedas** — Búsqueda de publicaciones por título, búsqueda de usuarios por nombre (coincidencia parcial), búsqueda en comentarios.
 - **Perfiles** — Perfil de usuario con descripción editable y cambio de nombre de usuario.
+- **Rate limiting** — Configurable por JSON: máximo de requests por ventana de tiempo.
+- **HTTPS** — Soporte nativo configurable vía JSON.
+- **Todo en backend** — Sin JavaScript, solo formularios HTML y redirecciones del servidor.
 - **Sin base de datos** — Todo en memoria, cero dependencias externas.
 
 ## Stack
@@ -19,7 +23,7 @@ Un foro minimalista y autónomo escrito en Go, con almacenamiento en memoria, se
 - **Lenguaje:** Go 1.25+
 - **Dependencias:** Solo `golang.org/x/crypto` para bcrypt.
 - **Frontend:** HTML templates (`html/template`) sin JavaScript ni frameworks.
-- **Estilo:** Sin CSS (sin archivo `style.css` creado aún).
+- **Sin base de datos** — Persistencia mínima en archivo JSON.
 
 ## Instalación y uso
 
@@ -27,7 +31,7 @@ Un foro minimalista y autónomo escrito en Go, con almacenamiento en memoria, se
 go run main.go
 ```
 
-El servidor corre en `http://localhost:8080`.
+El servidor corre en `http://localhost:8080` (puerto configurable).
 
 ### Cuenta de administración por defecto
 
@@ -35,21 +39,37 @@ El servidor corre en `http://localhost:8080`.
 |---------|-----------|
 | admin   | 1234      |
 
+## Configuración (`config.json`)
+
+| Campo | Descripción | Default |
+|---|---|---|
+| `rate_limit` | Máximo de solicitudes por ventana de tiempo | `100` |
+| `reset_minutes` | Minutos para reiniciar el contador de rate limit | `1` |
+| `port` | Puerto del servidor | `8080` |
+| `data_file` | Ruta del archivo de persistencia del foro | `forum.json` |
+| `https` | Habilitar HTTPS | `false` |
+| `cert_file` | Ruta al certificado SSL | `cert.pem` |
+| `key_file` | Ruta a la llave SSL | `key.pem` |
+| `session_token_name` | Nombre de la cookie de sesión | `session_token` |
+| `session_expire_minutes` | Minutos hasta expirar la sesión (0 = nunca) | `0` |
+
 ## Estructura del proyecto
 
 ```
 linuxforum/
-├── main.go              # Servidor completo (single file, ~950 líneas)
+├── main.go              # Servidor completo (single file, ~1200 líneas)
+├── config.json          # Configuración general del servidor
 ├── go.mod               # Módulo Go
 ├── go.sum               # Checksum de dependencias
 ├── README.md
 ├── LICENSE
 └── web/
     ├── head.html        # Template <head> compartido
-    ├── upbar.html       # Barra lateral de navegación
-    ├── index.html       # Página principal (lista de posts)
+    ├── upbar.html       # Barra superior de navegación
+    ├── index.html       # Página principal (lista de posts + filtros)
+    ├── filtered.html    # Resultados de filtrado
     ├── post.html        # Vista de post + comentarios
-    ├── search.html      # Resultados de búsqueda
+    ├── search.html      # Resultados de búsqueda + filtros
     ├── user.html        # Perfil de usuario
     ├── login.html       # Inicio de sesión / registro
     ├── public.html      # Formulario de nuevo post
@@ -62,6 +82,7 @@ linuxforum/
 | Método | Ruta              | Descripción                               | Autenticación |
 |--------|-------------------|-------------------------------------------|---------------|
 | GET    | `/`               | Lista todas las publicaciones             | No            |
+| GET    | `/filtered`       | Lista publicaciones ordenadas             | No            |
 | GET    | `/view?id=N`      | Ver un post y sus comentarios             | No            |
 | GET    | `/search?query=X` | Buscar posts por título                   | No            |
 | GET    | `/search?user=X`  | Buscar usuarios por nombre                | No            |
@@ -117,10 +138,10 @@ linuxforum/
 - **Contraseñas** hasheadas con bcrypt (coste por defecto).
 - **Autoría verificada en backend** — Tanto la eliminación de posts como de comentarios verifica que el usuario autenticado sea el autor.
 - **Confirmación de título** — Para eliminar un post, el usuario debe escribir el título exacto, evitando eliminaciones accidentales.
-- **Sesiones por cookie** — Identificador único por sesión, sin exposición de contraseñas.
+- **Sesiones por cookie** — Nombre de cookie configurable, identificador único por sesión, sin exposición de contraseñas. Las sesiones pueden expirar automáticamente.
 - **Validación de entrada** — Títulos y mensajes no vacíos, nombres de usuario únicos, etc.
-- **Rate limiting** — Máximo 100 solicitudes por minuto por IP para evitar abusos.
-- **HTTPS opcional** — Activable con la flag `-wh` (with https). Requiere `cert.pem` y `key.pem`.
+- **Rate limiting** — Configurable vía `config.json` para evitar abusos.
+- **HTTPS** — Soporte nativo configurable vía `config.json`.
 - **Sin dependencias externas** — Solo bcrypt para hash de contraseñas, mínimo vector de ataque.
 
 ## Podado de comentarios
@@ -138,6 +159,7 @@ Esto evita que el árbol de comentarios se llene de `[eliminado]` innecesarios.
 
 - **Almacenamiento en memoria** — Los datos se pierden al reiniciar el servidor.
 - **Sin base de datos** — No hay persistencia ni migraciones.
+- **Tiempo sin fecha completa** — Solo se almacena HH:MM, no la fecha completa.
 
 ## Licencia
 

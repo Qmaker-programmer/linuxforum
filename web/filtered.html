@@ -4,18 +4,18 @@
 <body>
 
     {{template "upbar" .}}
-    
-    <h3>Discusiones Recientes</h3>
+
+    <h3>Discusiones ordenadas</h3>
 
     <form action="/filtered" method="GET">
         <label for="sort_by">Ordenar por:</label>
         <select name="sort_by" id="sort_by">
-            <option value="date">Fecha</option>
-            <option value="title">Título</option>
+            <option value="date" {{if eq .SortBy "date"}}selected{{end}}>Fecha</option>
+            <option value="title" {{if eq .SortBy "title"}}selected{{end}}>Título</option>
         </select>
         <select name="order" id="order">
-            <option value="asc">Ascendente</option>
-            <option value="desc">Descendente</option>
+            <option value="asc" {{if eq .Order "asc"}}selected{{end}}>Ascendente</option>
+            <option value="desc" {{if eq .Order "desc"}}selected{{end}}>Descendente</option>
         </select>
         <button type="submit">Filtrar</button>
     </form>
@@ -24,7 +24,7 @@
         <ul>
         {{range .Posts}}
             <li>
-                <a href="/view?id={{.ID}}&from=home"><strong>{{.Title}}</strong></a>
+                <a href="/view?id={{.ID}}&from=filtered"><strong>{{.Title}}</strong></a>
                 <small>por <a href="/user?u={{.User}}">{{.User}}</a> a las {{.Time}}</small>
             </li>
         {{end}}

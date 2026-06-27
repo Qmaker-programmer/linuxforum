@@ -7,6 +7,8 @@
 
     {{if eq .From "search"}}
         <a href="/search?query={{.SearchQuery}}">&lt;- Volver a la búsqueda: "{{.SearchQuery}}"</a>
+    {{else if eq .From "filtered"}}
+        <a href="/filtered?sort_by=date&order=asc">&lt;- Volver a los posts filtrados</a>
     {{else if eq .From "profile"}}
         <a href="/user?u={{.Post.User}}">&lt;- Volver al perfil de {{.Post.User}}</a>
     {{else}}

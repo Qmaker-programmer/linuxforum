@@ -8,6 +8,21 @@
 
     {{if .Query}}
         <h3>Resultados para la búsqueda de publicaciones: "{{.Query}}"</h3>
+
+        <form action="/search" method="GET">
+            <input type="hidden" name="query" value="{{.Query}}">
+            <label for="sort_by">Ordenar por:</label>
+            <select name="sort_by" id="sort_by">
+                <option value="date" {{if eq .SortBy "date"}}selected{{end}}>Fecha</option>
+                <option value="title" {{if eq .SortBy "title"}}selected{{end}}>Título</option>
+            </select>
+            <select name="order" id="order">
+                <option value="asc" {{if eq .Order "asc"}}selected{{end}}>Ascendente</option>
+                <option value="desc" {{if eq .Order "desc"}}selected{{end}}>Descendente</option>
+            </select>
+            <button type="submit">Filtrar</button>
+        </form>
+
         <div id="search-results">
             <ul>
             {{range .Posts}}
