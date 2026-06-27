@@ -29,7 +29,7 @@ Un foro minimalista y autónomo escrito en Go, con SQLite, sesiones por cookie, 
 ## Instalación y uso
 
 ```bash
-go run main.go
+go run ./src
 ```
 
 El servidor corre en `http://localhost:8080` (puerto configurable).
@@ -58,13 +58,18 @@ El servidor corre en `http://localhost:8080` (puerto configurable).
 
 ```
 linuxforum/
-├── main.go              # Servidor completo (single file, ~1100 líneas)
 ├── config.json          # Configuración general del servidor
 ├── .gitignore
 ├── go.mod               # Módulo Go
 ├── go.sum               # Checksum de dependencias
 ├── README.md
 ├── LICENSE
+├── src/                 # Código fuente Go (package main)
+│   ├── main.go          # Entry point, configuración, rate limiting
+│   ├── types.go         # Structs y variables globales
+│   ├── db.go            # Operaciones de base de datos
+│   ├── templates.go     # Renderizado de templates y helpers
+│   └── handlers.go      # Todos los HTTP handlers
 └── web/
     ├── head.html        # Template <head> compartido
     ├── upbar.html       # Barra superior de navegación
