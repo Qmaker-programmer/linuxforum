@@ -4,55 +4,167 @@
 <body class="{{.Theme}}">
 
     {{template "upbar" .}}
-    <a href="/">&lt;- Volver al inicio</a>
+    
+    <style>
+        .search-container {
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 0 15px;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-bottom: 15px;
+            text-decoration: none;
+        }
 
-    {{if .Query}}
-        <h3>Resultados para la búsqueda de publicaciones: "{{.Query}}"</h3>
+        /* Barra de filtros horizontal idéntica al index */
+        .filter-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(0,0,0,0.02);
+            padding: 12px 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+        .filter-bar label {
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        .filter-bar select, .filter-bar button {
+            padding: 5px 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            background: #fff;
+        }
+        .filter-bar button {
+            cursor: pointer;
+            background: #f0f0f0;
+        }
+        .filter-bar button:hover {
+            background: #e0e0e0;
+        }
 
-        <form action="/search" method="GET">
-            <input type="hidden" name="query" value="{{.Query}}">
-            <label for="sort_by">Ordenar por:</label>
-            <select name="sort_by" id="sort_by">
-                <option value="date" {{if eq .SortBy "date"}}selected{{end}}>Fecha</option>
-                <option value="title" {{if eq .SortBy "title"}}selected{{end}}>Título</option>
-            </select>
-            <select name="order" id="order">
-                <option value="asc" {{if eq .Order "asc"}}selected{{end}}>Ascendente</option>
-                <option value="desc" {{if eq .Order "desc"}}selected{{end}}>Descendente</option>
-            </select>
-            <button type="submit">Filtrar</button>
-        </form>
+        /* Formato de tabla clásica para los resultados */
+        .results-list {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 30px 0;
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .result-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            background: #fff;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            transition: background 0.2s;
+        }
+        .result-row:last-child {
+            border-bottom: none;
+        }
+        .result-row:hover {
+            background: rgba(0,0,0,0.01);
+        }
+        .result-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .result-title {
+            font-size: 1.1em;
+            text-decoration: none;
+        }
+        .result-meta {
+            color: gray;
+            font-size: 0.85em;
+        }
 
-        <div id="search-results">
-            <ul>
-            {{range .Posts}}
-                <li>
-                    <a href="/view?id={{.ID}}&from=search&query={{$.Query}}"><strong>{{.Title}}</strong></a> 
-                    <small>por <a href="/user?u={{.User}}">{{.User}}</a> a las {{.Time}}</small>
-                </li>
-            {{else}}
-                <p>No se encontraron publicaciones que coincidan con tu búsqueda.</p>
-            {{end}}
-            </ul>
-        </div>
-    {{end}}
+        /* Ajuste responsivo */
+        @media (max-width: 600px) {
+            .filter-bar { flex-wrap: wrap; }
+            .result-row {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+        }
+    </style>
 
-    {{if .UserQuery}}
-        <h3>Resultados para la búsqueda de usuarios: "{{.UserQuery}}"</h3>
-        <div id="user-results">
-            <ul>
-            {{range .Users}}
-                <li>
-                    <a href="/user?u={{.}}"><strong>{{.}}</strong></a>
-                </li>
-            {{else}}
-                <p>No se encontraron usuarios que coincidan con tu búsqueda.</p>
-            {{end}}
-            </ul>
-        </div>
-    {{end}}
+    <div class="search-container">
+        
+        <a class="back-link" href="/">&lt;- Volver al inicio</a>
+
+        {{if .Query}}
+            <h3>Resultados para la búsqueda de publicaciones: "{{.Query}}"</h3>
+
+            <form action="/search" method="GET" class="filter-bar">
+                <input type="hidden" name="query" value="{{.Query}}">
+                
+                <label for="sort_by">Ordenar por:</label>
+                <select name="sort_by" id="sort_by">
+                    <option value="date" {{if eq .SortBy "date"}}selected{{end}}>Fecha</option>
+                    <option value="title" {{if eq .SortBy "title"}}selected{{end}}>Título</option>
+                </select>
+                
+                <select name="order" id="order">
+                    <option value="asc" {{if eq .Order "asc"}}selected{{end}}>Ascendente</option>
+                    <option value="desc" {{if eq .Order "desc"}}selected{{end}}>Descendente</option>
+                </select>
+                
+                <button type="submit">Filtrar</button>
+            </form>
+
+            <div id="search-results">
+                <ul class="results-list">
+                {{range .Posts}}
+                    <li class="result-row">
+                        <div class="result-info">
+                            <a class="result-title" href="/view?id={{.ID}}&from=search&query={{$.Query}}"><strong>{{.Title}}</strong></a>
+                            <span class="result-meta">
+                                por <a href="/user?u={{.User}}">{{.User}}</a>
+                            </span>
+                        </div>
+                        <div class="result-meta">
+                            {{.Time}}
+                        </div>
+                    </li>
+                {{else}}
+                    <li class="result-row" style="justify-content: center; color: gray; padding: 20px;">
+                        No se encontraron publicaciones que coincidan con tu búsqueda.
+                    </li>
+                {{end}}
+                </ul>
+            </div>
+        {{end}}
+
+        {{if .UserQuery}}
+            <h3>Resultados para la búsqueda de usuarios: "{{.UserQuery}}"</h3>
+            <div id="user-results">
+                <ul class="results-list">
+                {{range .Users}}
+                    <li class="result-row" style="justify-content: flex-start;">
+                        <div class="result-info">
+                            <a class="result-title" href="/user?u={{.}}"><strong>{{.}}</strong></a>
+                            <span class="result-meta">Perfil de miembro</span>
+                        </div>
+                    </li>
+                {{else}}
+                    <li class="result-row" style="justify-content: center; color: gray; padding: 20px;">
+                        No se encontraron usuarios que coincidan con tu búsqueda.
+                    </li>
+                {{end}}
+                </ul>
+            </div>
+        {{end}}
+
+    </div>
 
     <hr>
-
 </body>
 </html>

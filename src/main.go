@@ -126,7 +126,13 @@ func main() {
 	http.HandleFunc("/web/public.html", handlePublic)
 
 	fs := http.FileServer(http.Dir("./web"))
-	http.Handle("/web/", http.StripPrefix("/web/", fs))
+	http.Handle("/web/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/web/" || strings.HasSuffix(r.URL.Path, ".html") {
+			http.NotFound(w, r)
+			return
+		}
+		http.StripPrefix("/web/", fs).ServeHTTP(w, r)
+	}))
 
 	http.HandleFunc("/", handleHome)
 	http.HandleFunc("/filtered", handleFiltered)

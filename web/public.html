@@ -4,15 +4,112 @@
 <body class="{{.Theme}}">
 
     {{template "upbar" .}}
-
-    <a href="/">&lt;- Volver al inicio</a>
-    <h3>Publicar una nueva discusión</h3>
     
-    <form action="/post" method="POST">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <input type="text" name="title" placeholder="Título de la publicación" maxlength="200" required><br><br>
-        <textarea name="message" placeholder="Contenido de tu publicación" rows="5" maxlength="10000" required></textarea><br><br>
-        <button type="submit">Publicar</button>
-    </form>
+    <style>
+        .post-container {
+            max-width: 800px;
+            margin: 30px auto;
+            padding: 0 15px;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            text-decoration: none;
+        }
+
+        /* Caja contenedora estilo foro clásico */
+        .post-box {
+            background: #fff;
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 8px;
+            padding: 25px;
+        }
+
+        .post-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-group label {
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        /* Inputs modernos con toque retro limpio */
+        .post-form input[type="text"],
+        .post-form textarea {
+            padding: 10px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1em;
+            font-family: inherit;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .post-form textarea {
+            resize: vertical;
+            min-height: 150px;
+        }
+
+        /* Botón alineado a la izquierda */
+        .form-actions {
+            display: flex;
+            justify-content: flex-start;
+            margin-top: 5px;
+        }
+
+        .post-form button {
+            padding: 10px 20px;
+            background: #f0f0f0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.95em;
+        }
+
+        .post-form button:hover {
+            background: #e0e0e0;
+        }
+    </style>
+
+    <div class="post-container">
+        
+        <a class="back-link" href="/">&lt;- Volver al inicio</a>
+
+        <div class="post-box">
+            <h3 style="margin-top: 0; border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom: 10px;">Publicar una nueva discusión</h3>
+            
+            <form action="/post" method="POST" class="post-form">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                
+                <div class="form-group">
+                    <label for="post_title">Título de la publicación:</label>
+                    <input type="text" id="post_title" name="title" placeholder="Escribe un título descriptivo..." maxlength="200" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="post_message">Contenido:</label>
+                    <textarea id="post_message" name="message" placeholder="¿De qué quieres hablar hoy? Escribe aquí el contenido de tu publicación..." maxlength="10000" required></textarea>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit">Publicar discusión</button>
+                </div>
+            </form>
+        </div>
+
+    </div>
+
 </body>
 </html>

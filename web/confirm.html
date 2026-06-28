@@ -4,26 +4,128 @@
 <body class="{{.Theme}}">
 
     {{template "upbar" .}}
+    
+    <style>
+        .delete-container {
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 0 15px;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            text-decoration: none;
+        }
 
-    <a href="/view?id={{.Post.ID}}">&lt;- Volver al post</a>
+        /* Caja de alerta estilo foro tradicional */
+        .alert-box {
+            background: #fff;
+            border: 1px solid rgba(217, 83, 79, 0.3); /* Borde sutil rojizo */
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
 
-    <h2>Confirmar eliminación</h2>
-    <p>Para eliminar el post "<strong>{{.Post.Title}}</strong>", escribe el título exacto:</p>
+        .alert-title {
+            margin-top: 0;
+            color: #d9534f; /* Color de advertencia */
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            padding-bottom: 10px;
+        }
 
-    {{if .Error}}
-        <p style="color:red"><strong>{{.Error}}</strong></p>
-    {{end}}
+        .delete-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 20px;
+        }
 
-    <form action="/confirm" method="POST">
-        <input type="hidden" name="post_id" value="{{.Post.ID}}">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <input type="text" name="title" placeholder="Escribe el título del post" required>
-        <br><br>
-        <button type="submit">Eliminar post</button>
-    </form>
+        .delete-form input[type="text"] {
+            padding: 10px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1em;
+            width: 100%;
+            box-sizing: border-box;
+        }
 
-    <br>
-    <a href="/view?id={{.Post.ID}}">Cancelar</a>
+        /* Botones alineados horizontalmente */
+        .action-buttons {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-top: 5px;
+        }
+
+        .btn-danger {
+            padding: 10px 20px;
+            background: #d9534f;
+            color: white;
+            border: 1px solid #d43f3a;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.95em;
+        }
+
+        .btn-danger:hover {
+            background: #c9302c;
+        }
+
+        .cancel-link {
+            text-decoration: none;
+            color: #555;
+            font-size: 0.95em;
+        }
+
+        .cancel-link:hover {
+            text-decoration: underline;
+        }
+
+        .error-box {
+            background: #f2dede;
+            color: #a94442;
+            padding: 10px 15px;
+            border-radius: 4px;
+            border: 1px solid #ebccd1;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+        }
+    </style>
+
+    <div class="delete-container">
+        
+        <a class="back-link" href="/view?id={{.Post.ID}}">&lt;- Volver al post</a>
+
+        <div class="alert-box">
+            <h2 class="alert-title">Confirmar eliminación</h2>
+            
+            <p style="line-height: 1.5; margin-bottom: 20px;">
+                Esta acción no se puede deshacer. Para eliminar el post 
+                "<strong>{{.Post.Title}}</strong>", por favor escribe su título exacto a continuación:
+            </p>
+
+            {{if .Error}}
+                <div class="error-box">
+                    <strong>Error:</strong> {{.Error}}
+                </div>
+            {{end}}
+
+            <form action="/confirm" method="POST" class="delete-form">
+                <input type="hidden" name="post_id" value="{{.Post.ID}}">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                
+                <input type="text" name="title" placeholder="Escribe aquí el título del post para confirmar" required>
+                
+                <div class="action-buttons">
+                    <button type="submit" class="btn-danger">Eliminar post definitivamente</button>
+                    <a href="/view?id={{.Post.ID}}" class="cancel-link">Cancelar</a>
+                </div>
+            </form>
+        </div>
+
+    </div>
 
 </body>
 </html>

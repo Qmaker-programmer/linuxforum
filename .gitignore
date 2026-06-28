@@ -3,3 +3,4 @@ forum.db
 *.db
 *.db-wal
 *.db-shm
+noUpload/

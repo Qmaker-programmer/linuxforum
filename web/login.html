@@ -4,37 +4,160 @@
 <body class="{{.Theme}}">
 
     {{template "upbar" .}}
+    
+    <style>
+        .auth-container {
+            max-width: 900px;
+            margin: 30px auto;
+            padding: 0 15px;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            text-decoration: none;
+        }
 
-    <a href="/">&lt;- Volver al inicio</a>
+        /* Caja contenedora dividida en dos columnas */
+        .auth-grid {
+            display: flex;
+            gap: 40px;
+            background: #fff;
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 8px;
+            padding: 30px;
+        }
 
-    <h3>Iniciar Sesión</h3>
-    <form action="/auth" method="POST">
-        <input type="hidden" name="action" value="login">
-        Usuario:<br>
-        <input type="text" name="username" placeholder="Usuario" value="{{.LoginUsername}}" required><br>
-        {{if .LoginUserError}}<font color="red">{{.LoginUserError}}</font><br>{{end}}
-        <br>
-        Contraseña:<br>
-        <input type="password" name="password" placeholder="Contraseña" required><br>
-        {{if .LoginPassError}}<font color="red">{{.LoginPassError}}</font><br>{{end}}
-        <br>
-        <button type="submit">Ingresar</button>
-    </form>
+        .auth-box {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
 
-    <br><hr><br>
+        /* Separador vertical intermedio al estilo clásico */
+        .auth-box:first-child {
+            border-right: 1px solid rgba(0,0,0,0.1);
+            padding-right: 40px;
+        }
 
-    <h3>¿No tienes cuenta? Regístrate aquí</h3>
-    <form action="/auth" method="POST">
-        <input type="hidden" name="action" value="register">
-        Usuario:<br>
-        <input type="text" name="username" placeholder="Elige un usuario" value="{{.RegisterUsername}}" required><br>
-        {{if .RegisterUserError}}<font color="red">{{.RegisterUserError}}</font><br>{{end}}
-        <br>
-        Contraseña:<br>
-        <input type="password" name="password" placeholder="Elige una contraseña" required><br>
-        {{if .RegisterPassError}}<font color="red">{{.RegisterPassError}}</font><br>{{end}}
-        <br>
-        <button type="submit">Crear Cuenta</button>
-    </form>
+        /* Estilos de formulario limpios */
+        .auth-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 15px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .form-group label {
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .auth-form input[type="text"],
+        .auth-form input[type="password"] {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1em;
+        }
+
+        .auth-form button {
+            padding: 10px;
+            background: #f0f0f0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        .auth-form button:hover {
+            background: #e0e0e0;
+        }
+
+        /* Errores con estilo limpio */
+        .error-text {
+            color: #d9534f;
+            font-size: 0.85em;
+            margin-top: 2px;
+        }
+
+        /* Ajuste para pantallas pequeñas */
+        @media (max-width: 768px) {
+            .auth-grid {
+                flex-direction: column;
+                gap: 30px;
+                padding: 20px;
+            }
+            .auth-box:first-child {
+                border-right: none;
+                border-bottom: 1px solid rgba(0,0,0,0.1);
+                padding-right: 0;
+                padding-bottom: 30px;
+            }
+        }
+    </style>
+
+    <div class="auth-container">
+        
+        <a class="back-link" href="/">&lt;- Volver al inicio</a>
+
+        <div class="auth-grid">
+            
+            <div class="auth-box">
+                <h3 style="margin-top: 0;">Iniciar Sesión</h3>
+                
+                <form action="/auth" method="POST" class="auth-form">
+                    <input type="hidden" name="action" value="login">
+                    
+                    <div class="form-group">
+                        <label for="login_username">Usuario:</label>
+                        <input type="text" id="login_username" name="username" placeholder="Usuario" value="{{.LoginUsername}}" required>
+                        {{if .LoginUserError}}<span class="error-text">{{.LoginUserError}}</span>{{end}}
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="login_password">Contraseña:</label>
+                        <input type="password" id="login_password" name="password" placeholder="Contraseña" required>
+                        {{if .LoginPassError}}<span class="error-text">{{.LoginPassError}}</span>{{end}}
+                    </div>
+                    
+                    <button type="submit">Ingresar</button>
+                </form>
+            </div>
+
+            <div class="auth-box">
+                <h3 style="margin-top: 0;">¿No tienes cuenta?</h3>
+                <p style="color: gray; margin: 0; font-size: 0.9em;">Regístrate aquí para empezar a publicar.</p>
+                
+                <form action="/auth" method="POST" class="auth-form">
+                    <input type="hidden" name="action" value="register">
+                    
+                    <div class="form-group">
+                        <label for="reg_username">Usuario:</label>
+                        <input type="text" id="reg_username" name="username" placeholder="Elige un usuario" value="{{.RegisterUsername}}" required>
+                        {{if .RegisterUserError}}<span class="error-text">{{.RegisterUserError}}</span>{{end}}
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="reg_password">Contraseña:</label>
+                        <input type="password" id="reg_password" name="password" placeholder="Elige una contraseña" required>
+                        {{if .RegisterPassError}}<span class="error-text">{{.RegisterPassError}}</span>{{end}}
+                    </div>
+                    
+                    <button type="submit">Crear Cuenta</button>
+                </form>
+            </div>
+
+        </div>
+
+    </div>
+
 </body>
 </html>

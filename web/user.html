@@ -1,70 +1,261 @@
 <!DOCTYPE html>
 <html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>{{.ProfileUser.Username}} - Linux Forum</title>
-</head>
+{{template "head" .}}
 <body class="{{.Theme}}">
 
     {{template "upbar" .}}
 
-    <a href="/">&lt;- Volver al inicio</a>
+    <style>
+        .profile-container {
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 0 15px;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            text-decoration: none;
+        }
 
-    <h2>{{.ProfileUser.Username}}</h2>
+        /* Layout de dos columnas distribuidas con Flexbox */
+        .profile-layout {
+            display: flex;
+            gap: 30px;
+        }
 
-    {{if .ProfileUser.Description}}
-        <pre>{{.ProfileUser.Description}}</pre>
-    {{else}}
-        <p><em>Sin descripción.</em></p>
-    {{end}}
+        .profile-sidebar {
+            flex: 1;
+            min-width: 280px;
+        }
 
-    <h3>Publicaciones</h3>
-    <ul>
-    {{range .Posts}}
-        <li>
-            <a href="/view?id={{.ID}}&from=profile"><strong>{{.Title}}</strong></a>
-            <small>a las {{.Time}}</small>
-        </li>
-    {{else}}
-        <p>Este usuario aún no ha publicado nada.</p>
-    {{end}}
-    </ul>
+        .profile-main {
+            flex: 2;
+            min-width: 0;
+        }
 
-    {{if .IsOwnProfile}}
-        <h3>Guardados</h3>
-        <ul>
-        {{range .SavedPosts}}
-            <li>
-                <a href="/view?id={{.ID}}&from=profile"><strong>{{.Title}}</strong></a>
-                <small>por <a href="/user?u={{.User}}">{{.User}}</a> a las {{.Time}}</small>
-                <form action="/unsave" method="POST">
-                    <input type="hidden" name="post_id" value="{{.ID}}">
-                    <input type="hidden" name="return" value="/user?u={{$.ProfileUser.Username}}">
-                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                    <button type="submit">Quitar</button>
-                </form>
-            </li>
-        {{else}}
-            <p>No tienes posts guardados.</p>
-        {{end}}
-        </ul>
+        /* Tarjetas estilo foro retro */
+        .profile-card {
+            background: #fff;
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 25px;
+        }
 
-        <hr>
-        <h3>Editar perfil</h3>
-        {{if .Error}}
-            <p><strong>{{.Error}}</strong></p>
-        {{end}}
-        <form action="/profile" method="POST">
-            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-            <label>Nombre de usuario:<br>
-                <input type="text" name="username" value="{{.ProfileUser.Username}}" maxlength="50" required>
-            </label><br><br>
-            <label>Descripción:<br>
-                <textarea name="description" rows="4" cols="50" maxlength="2000" placeholder="Cuéntanos sobre ti...">{{.ProfileUser.Description}}</textarea>
-            </label><br><br>
-            <button type="submit">Guardar cambios</button>
-        </form>
-    {{end}}
+        .profile-card h2 {
+            margin-top: 0;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            padding-bottom: 10px;
+        }
+
+        .profile-card pre {
+            background: rgba(0,0,0,0.02);
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: inherit;
+            font-size: 0.95em;
+            margin: 10px 0 0 0;
+        }
+
+        /* Formulario de edición compacto */
+        .edit-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 10px;
+        }
+        .edit-form label {
+            font-weight: bold;
+            font-size: 0.9em;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .edit-form input[type="text"],
+        .edit-form textarea {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1em;
+            width: 100%;
+            box-sizing: border-box;
+            font-family: inherit;
+        }
+        .edit-form textarea {
+            resize: vertical;
+        }
+        .edit-form button {
+            padding: 8px 15px;
+            background: #f0f0f0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            align-self: flex-start;
+        }
+        .edit-form button:hover {
+            background: #e0e0e0;
+        }
+
+        /* Listas estilo tabla de foro idénticas al index */
+        .forum-list {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 25px 0;
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .forum-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            background: #fff;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+        .forum-row:last-child {
+            border-bottom: none;
+        }
+        .row-info {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .row-title {
+            font-size: 1em;
+            text-decoration: none;
+        }
+        .row-meta {
+            color: gray;
+            font-size: 0.85em;
+        }
+
+        /* Botón pequeño para quitar guardados horizontalmente */
+        .unsave-btn {
+            background: none;
+            border: none;
+            color: #d9534f;
+            cursor: pointer;
+            font-size: 0.85em;
+            padding: 0;
+            text-decoration: none;
+        }
+        .unsave-btn:hover {
+            text-decoration: underline;
+        }
+
+        .error-text {
+            color: #d9534f;
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+
+        /* Responsivo */
+        @media (max-width: 768px) {
+            .profile-layout { flex-direction: column; }
+            .forum-row { flex-direction: column; align-items: flex-start; gap: 8px; }
+        }
+    </style>
+
+    <div class="profile-container">
+        
+        <a class="back-link" href="/">&lt;- Volver al inicio</a>
+
+        <div class="profile-layout">
+            
+            <aside class="profile-sidebar">
+                
+                <div class="profile-card">
+                    <h2>{{.ProfileUser.Username}}</h2>
+                    <span class="row-meta">Descripción del usuario:</span>
+                    {{if .ProfileUser.Description}}
+                        <pre>{{.ProfileUser.Description}}</pre>
+                    {{else}}
+                        <p style="margin: 10px 0 0 0;"><em>Sin descripción.</em></p>
+                    {{end}}
+                </div>
+
+                {{if .IsOwnProfile}}
+                    <div class="profile-card">
+                        <h3 style="margin-top:0;">Editar perfil</h3>
+                        
+                        {{if .Error}}
+                            <p class="error-text">{{.Error}}</p>
+                        {{end}}
+                        
+                        <form action="/profile" method="POST" class="edit-form">
+                            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                            
+                            <label>Nombre de usuario:
+                                <input type="text" name="username" value="{{.ProfileUser.Username}}" maxlength="50" required>
+                            </label>
+                            
+                            <label>Descripción:
+                                <textarea name="description" rows="4" maxlength="2000" placeholder="Cuéntanos sobre ti...">{{.ProfileUser.Description}}</textarea>
+                            </label>
+                            
+                            <button type="submit">Guardar cambios</button>
+                        </form>
+                    </div>
+                {{end}}
+            </aside>
+
+            <main class="profile-main">
+                
+                <h3 style="margin-top: 0;">Publicaciones de {{.ProfileUser.Username}}</h3>
+                <ul class="forum-list">
+                {{range .Posts}}
+                    <li class="forum-row">
+                        <div class="row-info">
+                            <a class="row-title" href="/view?id={{.ID}}&from=profile"><strong>{{.Title}}</strong></a>
+                        </div>
+                        <div class="row-meta">
+                            {{.Time}}
+                        </div>
+                    </li>
+                {{else}}
+                    <li class="forum-row" style="justify-content: center; color: gray; padding: 15px;">
+                        Este usuario aún no ha publicado nada.
+                    </li>
+                {{end}}
+                </ul>
+
+                {{if .IsOwnProfile}}
+                    <h3>Tus publicaciones guardadas</h3>
+                    <ul class="forum-list">
+                    {{range .SavedPosts}}
+                        <li class="forum-row">
+                            <div class="row-info">
+                                <a class="row-title" href="/view?id={{.ID}}&from=profile"><strong>{{.Title}}</strong></a>
+                                <span class="row-meta">
+                                    por <a href="/user?u={{.User}}">{{.User}}</a> · {{.Time}}
+                                </span>
+                            </div>
+                            
+                            <div>
+                                <form action="/unsave" method="POST" style="margin:0;">
+                                    <input type="hidden" name="post_id" value="{{.ID}}">
+                                    <input type="hidden" name="return" value="/user?u={{$.ProfileUser.Username}}">
+                                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                    <button type="submit" class="unsave-btn">Quitar de favoritos</button>
+                                </form>
+                            </div>
+                        </li>
+                    {{else}}
+                        <li class="forum-row" style="justify-content: center; color: gray; padding: 15px;">
+                            No tienes posts guardados.
+                        </li>
+                    {{end}}
+                    </ul>
+                {{end}}
+            </main>
+
+        </div>
+    </div>
 
     <hr>
 </body>

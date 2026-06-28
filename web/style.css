@@ -115,3 +115,59 @@ img {
   margin: 0; 
   display: inline;
 }
+/* =======================================================
+   ADAPTACIÓN AUTOMÁTICA DE COMPONENTES AL MODO OSCURO
+   ======================================================= */
+
+/* Cambia los fondos blancos de las cajas y listas a un gris oscuro suave */
+body.dark .post-box,
+body.dark .auth-grid,
+body.dark .alert-box,
+body.dark .profile-card,
+body.dark .post-row,
+body.dark .result-row,
+body.dark .forum-row {
+  background: #252525;
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #ddd;
+}
+
+/* Cambia los elementos que eran gris muy clarito (como la sidebar o los filtros) */
+body.dark .sidebar,
+body.dark .filter-bar,
+body.dark .upbar-container {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Efecto hover sutil para las filas del foro en modo oscuro */
+body.dark .post-row:hover,
+body.dark .result-row:hover,
+body.dark .forum-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Corrige los bloques de texto <pre> dentro del perfil */
+body.dark .profile-card pre {
+  background: rgba(0, 0, 0, 0.3);
+  color: #ccc;
+}
+
+/* Botones específicos que tenían colores fijos */
+body.dark .clear-search-btn,
+body.dark .post-actions button {
+  background: #2d2d2d;
+  color: #ddd;
+  border-color: #555;
+}
+body.dark .clear-search-btn:hover,
+body.dark .post-actions button:hover {
+  background: #3d3d3d;
+  color: #fff;
+}
+
+/* Textos secundarios o metas en modo oscuro */
+body.dark .post-meta,
+body.dark .row-meta {
+  color: #aaa;
+}

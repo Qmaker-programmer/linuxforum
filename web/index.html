@@ -5,32 +5,135 @@
 
     {{template "upbar" .}}
     
-    <h3>Discusiones Recientes</h3>
+    <style>
+        .forum-container {
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 0 15px;
+        }
+        
+        /* Barra de filtros horizontal */
+        .filter-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(0,0,0,0.02);
+            padding: 12px 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+        .filter-bar label {
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        .filter-bar select, .filter-bar button {
+            padding: 5px 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            background: #fff;
+        }
+        .filter-bar button {
+            cursor: pointer;
+            background: #f0f0f0;
+        }
+        .filter-bar button:hover {
+            background: #e0e0e0;
+        }
 
-    <form action="/filtered" method="GET">
-        <label for="sort_by">Ordenar por:</label>
-        <select name="sort_by" id="sort_by">
-            <option value="date">Fecha</option>
-            <option value="title">Título</option>
-        </select>
-        <select name="order" id="order">
-            <option value="asc">Ascendente</option>
-            <option value="desc">Descendente</option>
-        </select>
-        <button type="submit">Filtrar</button>
-    </form>
+        /* Lista de posts estilo foro clásico */
+        .posts-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .post-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            background: #fff;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            transition: background 0.2s;
+        }
+        .post-row:last-child {
+            border-bottom: none;
+        }
+        .post-row:hover {
+            background: rgba(0,0,0,0.01); /* Efecto sutil al pasar el mouse */
+        }
+        .post-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .post-title {
+            font-size: 1.1em;
+            text-decoration: none;
+        }
+        .post-meta {
+            color: gray;
+            font-size: 0.85em;
+        }
 
-    <div id="forum-posts">
-        <ul>
-        {{range .Posts}}
-            <li>
-                <a href="/view?id={{.ID}}&from=home"><strong>{{.Title}}</strong></a>
-                <small>por <a href="/user?u={{.User}}">{{.User}}</a> a las {{.Time}}</small>
-            </li>
-        {{end}}
-        </ul>
+        /* Ajuste responsivo */
+        @media (max-width: 600px) {
+            .filter-bar {
+                flex-wrap: wrap;
+            }
+            .post-row {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+        }
+    </style>
+
+    <div class="forum-container">
+        
+        <h3>Discusiones Recientes</h3>
+
+        <form action="/filtered" method="GET" class="filter-bar">
+            <label for="sort_by">Ordenar por:</label>
+            <select name="sort_by" id="sort_by">
+                <option value="date">Fecha</option>
+                <option value="title">Título</option>
+            </select>
+            
+            <select name="order" id="order">
+                <option value="asc">Ascendente</option>
+                <option value="desc">Descendente</option>
+            </select>
+            
+            <button type="submit">Filtrar</button>
+        </form>
+
+        <div id="forum-posts">
+            <ul class="posts-list">
+            {{range .Posts}}
+                <li class="post-row">
+                    <div class="post-info">
+                        <a class="post-title" href="/view?id={{.ID}}&from=home"><strong>{{.Title}}</strong></a>
+                        <span class="post-meta">
+                            por <a href="/user?u={{.User}}">{{.User}}</a>
+                        </span>
+                    </div>
+                    <div class="post-meta">
+                        {{.Time}}
+                    </div>
+                </li>
+            {{else}}
+                <li class="post-row" style="justify-content: center; color: gray;">
+                    No hay discusiones disponibles en este momento.
+                </li>
+            {{end}}
+            </ul>
+        </div>
+
     </div>
-
 
 </body>
 </html>
