@@ -9,6 +9,102 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+type migration struct {
+	Version int
+	Apply   func()
+}
+
+func runMigrations() {
+	db.Exec("CREATE TABLE IF NOT EXISTS migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)")
+
+	migrations := []migration{
+		{
+			Version: 1,
+			Apply: func() {
+				schema := `
+				CREATE TABLE IF NOT EXISTS posts (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					title TEXT NOT NULL,
+					user TEXT NOT NULL,
+					message TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				);
+				CREATE TABLE IF NOT EXISTS comments (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					post_id INTEGER NOT NULL,
+					parent_id INTEGER NOT NULL DEFAULT 0,
+					user TEXT NOT NULL,
+					message TEXT NOT NULL,
+					created_at TEXT NOT NULL,
+					deleted INTEGER NOT NULL DEFAULT 0
+				);
+				CREATE TABLE IF NOT EXISTS users (
+					username TEXT PRIMARY KEY,
+					password TEXT NOT NULL,
+					description TEXT NOT NULL DEFAULT '',
+					email TEXT NOT NULL DEFAULT ''
+				);
+				CREATE TABLE IF NOT EXISTS saved_posts (
+					username TEXT NOT NULL,
+					post_id INTEGER NOT NULL,
+					PRIMARY KEY (username, post_id)
+				);
+				CREATE TABLE IF NOT EXISTS password_resets (
+					username TEXT PRIMARY KEY,
+					token_hash TEXT NOT NULL,
+					expires_at TEXT NOT NULL,
+					used INTEGER NOT NULL DEFAULT 0
+				);
+				CREATE TABLE IF NOT EXISTS pending_deletions (
+					username TEXT PRIMARY KEY,
+					token_hash TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				);
+				CREATE TABLE IF NOT EXISTS pending_post_deletions (
+					post_id INTEGER PRIMARY KEY,
+					token_hash TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				);
+				CREATE TABLE IF NOT EXISTS pending_activations (
+					username TEXT PRIMARY KEY,
+					password TEXT NOT NULL,
+					email TEXT NOT NULL,
+					token_hash TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				);`
+				if _, err := db.Exec(schema); err != nil {
+					panic(fmt.Sprintf("Migración %d fallida: %v", 1, err))
+				}
+			},
+		},
+		{
+			Version: 2,
+			Apply: func() {
+				var count int
+				db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('users') WHERE name='email'").Scan(&count)
+				if count == 0 {
+					if _, err := db.Exec("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''"); err != nil {
+						panic(fmt.Sprintf("Migración %d fallida: %v", 2, err))
+					}
+				}
+			},
+		},
+	}
+
+	for _, m := range migrations {
+		var count int
+		db.QueryRow("SELECT COUNT(*) FROM migrations WHERE version = ?", m.Version).Scan(&count)
+		if count > 0 {
+			continue
+		}
+
+		m.Apply()
+
+		db.Exec("INSERT INTO migrations (version, applied_at) VALUES (?, datetime('now'))", m.Version)
+		fmt.Println("Migración", m.Version, "aplicada")
+	}
+}
+
 func initDB() {
 	var err error
 	db, err = sql.Open("sqlite3", config.DBPath)
@@ -18,69 +114,7 @@ func initDB() {
 	}
 	db.Exec("PRAGMA journal_mode=WAL")
 
-	schema := `
-	CREATE TABLE IF NOT EXISTS posts (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		title TEXT NOT NULL,
-		user TEXT NOT NULL,
-		message TEXT NOT NULL,
-		created_at TEXT NOT NULL
-	);
-	CREATE TABLE IF NOT EXISTS comments (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		post_id INTEGER NOT NULL,
-		parent_id INTEGER NOT NULL DEFAULT 0,
-		user TEXT NOT NULL,
-		message TEXT NOT NULL,
-		created_at TEXT NOT NULL,
-		deleted INTEGER NOT NULL DEFAULT 0
-	);
-	CREATE TABLE IF NOT EXISTS users (
-		username TEXT PRIMARY KEY,
-		password TEXT NOT NULL,
-		description TEXT NOT NULL DEFAULT '',
-		email TEXT NOT NULL DEFAULT ''
-	);
-	CREATE TABLE IF NOT EXISTS saved_posts (
-		username TEXT NOT NULL,
-		post_id INTEGER NOT NULL,
-		PRIMARY KEY (username, post_id)
-	);
-	CREATE TABLE IF NOT EXISTS password_resets (
-		username TEXT PRIMARY KEY,
-		token_hash TEXT NOT NULL,
-		expires_at TEXT NOT NULL,
-		used INTEGER NOT NULL DEFAULT 0
-	);
-	CREATE TABLE IF NOT EXISTS pending_deletions (
-		username TEXT PRIMARY KEY,
-		token_hash TEXT NOT NULL,
-		created_at TEXT NOT NULL
-	);
-	CREATE TABLE IF NOT EXISTS pending_post_deletions (
-		post_id INTEGER PRIMARY KEY,
-		token_hash TEXT NOT NULL,
-		created_at TEXT NOT NULL
-	);
-	CREATE TABLE IF NOT EXISTS pending_activations (
-		username TEXT PRIMARY KEY,
-		password TEXT NOT NULL,
-		email TEXT NOT NULL,
-		token_hash TEXT NOT NULL,
-		created_at TEXT NOT NULL
-	);`
-
-	if _, err := db.Exec(schema); err != nil {
-		fmt.Println("Error al crear tablas:", err)
-		panic(err)
-	}
-
-	// Migrate: add email column if it doesn't exist (for existing DBs)
-	var emailCount int
-	db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('users') WHERE name='email'").Scan(&emailCount)
-	if emailCount == 0 {
-		db.Exec("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''")
-	}
+	runMigrations()
 }
 
 func getAllPosts() []Post {
