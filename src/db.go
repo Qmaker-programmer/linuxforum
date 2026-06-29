@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -37,17 +38,48 @@ func initDB() {
 	CREATE TABLE IF NOT EXISTS users (
 		username TEXT PRIMARY KEY,
 		password TEXT NOT NULL,
-		description TEXT NOT NULL DEFAULT ''
+		description TEXT NOT NULL DEFAULT '',
+		email TEXT NOT NULL DEFAULT ''
 	);
 	CREATE TABLE IF NOT EXISTS saved_posts (
 		username TEXT NOT NULL,
 		post_id INTEGER NOT NULL,
 		PRIMARY KEY (username, post_id)
+	);
+	CREATE TABLE IF NOT EXISTS password_resets (
+		username TEXT PRIMARY KEY,
+		token_hash TEXT NOT NULL,
+		expires_at TEXT NOT NULL,
+		used INTEGER NOT NULL DEFAULT 0
+	);
+	CREATE TABLE IF NOT EXISTS pending_deletions (
+		username TEXT PRIMARY KEY,
+		token_hash TEXT NOT NULL,
+		created_at TEXT NOT NULL
+	);
+	CREATE TABLE IF NOT EXISTS pending_post_deletions (
+		post_id INTEGER PRIMARY KEY,
+		token_hash TEXT NOT NULL,
+		created_at TEXT NOT NULL
+	);
+	CREATE TABLE IF NOT EXISTS pending_activations (
+		username TEXT PRIMARY KEY,
+		password TEXT NOT NULL,
+		email TEXT NOT NULL,
+		token_hash TEXT NOT NULL,
+		created_at TEXT NOT NULL
 	);`
 
 	if _, err := db.Exec(schema); err != nil {
 		fmt.Println("Error al crear tablas:", err)
 		panic(err)
+	}
+
+	// Migrate: add email column if it doesn't exist (for existing DBs)
+	var emailCount int
+	db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('users') WHERE name='email'").Scan(&emailCount)
+	if emailCount == 0 {
+		db.Exec("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''")
 	}
 }
 
@@ -154,9 +186,9 @@ func existsUser(username string) bool {
 }
 
 func getUser(username string) *User {
-	row := db.QueryRow("SELECT username, password, description FROM users WHERE username = ?", username)
+	row := db.QueryRow("SELECT username, password, description, email FROM users WHERE username = ?", username)
 	var u User
-	if err := row.Scan(&u.Username, &u.Password, &u.Description); err != nil {
+	if err := row.Scan(&u.Username, &u.Password, &u.Description, &u.Email); err != nil {
 		return nil
 	}
 	rows, err := db.Query("SELECT post_id FROM saved_posts WHERE username = ?", username)
@@ -280,4 +312,151 @@ func checkAndPruneUpward(id int) {
 func deleteCommentAndPrune(commentID int) {
 	db.Exec("UPDATE comments SET deleted = 1, message = '[eliminado]' WHERE id = ?", commentID)
 	checkAndPruneUpward(commentID)
+}
+
+func getUserByEmail(email string) *User {
+	row := db.QueryRow("SELECT username, password, description, email FROM users WHERE email = ?", email)
+	var u User
+	if err := row.Scan(&u.Username, &u.Password, &u.Description, &u.Email); err != nil {
+		return nil
+	}
+	return &u
+}
+
+func updateUserEmail(username, email string) error {
+	_, err := db.Exec("UPDATE users SET email = ? WHERE username = ?", email, username)
+	return err
+}
+
+func setUserPassword(username, hashedPassword string) error {
+	_, err := db.Exec("UPDATE users SET password = ? WHERE username = ?", hashedPassword, username)
+	return err
+}
+
+func saveResetToken(username, tokenHash string, expiresAt time.Time) error {
+	_, err := db.Exec("INSERT OR REPLACE INTO password_resets (username, token_hash, expires_at, used) VALUES (?, ?, ?, 0)",
+		username, tokenHash, expiresAt.Format(time.RFC3339))
+	return err
+}
+
+func getResetTokenByHash(tokenHash string) *ResetToken {
+	row := db.QueryRow("SELECT username, token_hash, expires_at, used FROM password_resets WHERE token_hash = ?", tokenHash)
+	var rt ResetToken
+	var used int
+	if err := row.Scan(&rt.Username, &rt.TokenHash, &rt.ExpiresAt, &used); err != nil {
+		return nil
+	}
+	rt.Used = used == 1
+	return &rt
+}
+
+func markResetTokenUsed(username string) error {
+	_, err := db.Exec("DELETE FROM password_resets WHERE username = ?", username)
+	return err
+}
+
+func cleanupExpiredResetTokens() {
+	db.Exec("DELETE FROM password_resets WHERE expires_at < datetime('now')")
+}
+
+func savePendingActivation(username, password, email, tokenHash string) error {
+	_, err := db.Exec("INSERT OR REPLACE INTO pending_activations (username, password, email, token_hash, created_at) VALUES (?, ?, ?, ?, datetime('now'))",
+		username, password, email, tokenHash)
+	return err
+}
+
+func getPendingActivationByHash(tokenHash string) *PendingActivation {
+	row := db.QueryRow("SELECT username, password, email, token_hash, created_at FROM pending_activations WHERE token_hash = ?", tokenHash)
+	var pa PendingActivation
+	if err := row.Scan(&pa.Username, &pa.Password, &pa.Email, &pa.TokenHash, &pa.CreatedAt); err != nil {
+		return nil
+	}
+	return &pa
+}
+
+func deletePendingActivation(username string) error {
+	_, err := db.Exec("DELETE FROM pending_activations WHERE username = ?", username)
+	return err
+}
+
+func cleanupExpiredPendingActivations() {
+	db.Exec("DELETE FROM pending_activations WHERE created_at < datetime('now', '-1 day')")
+}
+
+func existsPendingUsername(username string) bool {
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM pending_activations WHERE username = ?", username).Scan(&count)
+	return count > 0
+}
+
+func existsPendingEmail(email string) bool {
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM pending_activations WHERE email = ?", email).Scan(&count)
+	return count > 0
+}
+
+func savePendingDeletion(username, tokenHash string) error {
+	_, err := db.Exec("INSERT OR REPLACE INTO pending_deletions (username, token_hash, created_at) VALUES (?, ?, datetime('now'))",
+		username, tokenHash)
+	return err
+}
+
+func getPendingDeletionByHash(tokenHash string) *PendingDeletion {
+	row := db.QueryRow("SELECT username, token_hash, created_at FROM pending_deletions WHERE token_hash = ?", tokenHash)
+	var pd PendingDeletion
+	if err := row.Scan(&pd.Username, &pd.TokenHash, &pd.CreatedAt); err != nil {
+		return nil
+	}
+	return &pd
+}
+
+func deletePendingDeletion(username string) error {
+	_, err := db.Exec("DELETE FROM pending_deletions WHERE username = ?", username)
+	return err
+}
+
+func cleanupExpiredPendingDeletions() {
+	db.Exec("DELETE FROM pending_deletions WHERE created_at < datetime('now', '-1 hour')")
+}
+
+func savePendingPostDeletion(postID int, tokenHash string) error {
+	_, err := db.Exec("INSERT OR REPLACE INTO pending_post_deletions (post_id, token_hash, created_at) VALUES (?, ?, datetime('now'))",
+		postID, tokenHash)
+	return err
+}
+
+func getPendingPostDeletionByHash(tokenHash string) *PendingPostDeletion {
+	row := db.QueryRow("SELECT post_id, token_hash, created_at FROM pending_post_deletions WHERE token_hash = ?", tokenHash)
+	var ppd PendingPostDeletion
+	if err := row.Scan(&ppd.PostID, &ppd.TokenHash, &ppd.CreatedAt); err != nil {
+		return nil
+	}
+	return &ppd
+}
+
+func deletePendingPostDeletion(postID int) error {
+	_, err := db.Exec("DELETE FROM pending_post_deletions WHERE post_id = ?", postID)
+	return err
+}
+
+func cleanupExpiredPendingPostDeletions() {
+	db.Exec("DELETE FROM pending_post_deletions WHERE created_at < datetime('now', '-1 hour')")
+}
+
+func deleteUserAccount(username string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	tx.Exec("DELETE FROM saved_posts WHERE username = ?", username)
+	tx.Exec("UPDATE comments SET deleted = 1, message = '[eliminado]' WHERE user = ?", username)
+	tx.Exec("DELETE FROM posts WHERE user = ?", username)
+	tx.Exec("DELETE FROM password_resets WHERE username = ?", username)
+	tx.Exec("DELETE FROM pending_activations WHERE username = ?", username)
+	tx.Exec("DELETE FROM pending_deletions WHERE username = ?", username)
+	tx.Exec("DELETE FROM users WHERE username = ?", username)
+
+	return tx.Commit()
 }

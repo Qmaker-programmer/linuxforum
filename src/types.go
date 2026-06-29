@@ -36,7 +36,35 @@ type User struct {
 	Username     string
 	Password     string
 	Description  string
+	Email        string
 	SavedPostIDs []int
+}
+
+type PendingPostDeletion struct {
+	PostID    int
+	TokenHash string
+	CreatedAt string
+}
+
+type PendingDeletion struct {
+	Username  string
+	TokenHash string
+	CreatedAt string
+}
+
+type PendingActivation struct {
+	Username  string
+	Password  string
+	Email     string
+	TokenHash string
+	CreatedAt string
+}
+
+type ResetToken struct {
+	Username  string
+	TokenHash string
+	ExpiresAt string
+	Used      bool
 }
 
 type Session struct {

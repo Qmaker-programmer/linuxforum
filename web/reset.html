@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="es">
+{{template "head" .}}
+<body class="{{.Theme}}">
+
+    {{template "upbar" .}}
+
+    <style>
+        .reset-container {
+            max-width: 500px;
+            margin: 40px auto;
+            padding: 0 15px;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            text-decoration: none;
+        }
+
+        .reset-card {
+            background: #fff;
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 8px;
+            padding: 30px;
+        }
+
+        .reset-card h2 {
+            margin-top: 0;
+        }
+
+        .reset-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 15px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .form-group label {
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .reset-form input[type="password"] {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1em;
+        }
+
+        .reset-form button {
+            padding: 10px;
+            background: #f0f0f0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        .reset-form button:hover {
+            background: #e0e0e0;
+        }
+
+        .error-text {
+            color: #d9534f;
+            font-size: 0.85em;
+            margin-top: 5px;
+        }
+    </style>
+
+    <div class="reset-container">
+
+        <a class="back-link" href="/web/login.html">&lt;- Volver a inicio de sesión</a>
+
+        <div class="reset-card">
+            <h2>Restablecer contraseña</h2>
+            <p style="color: gray; font-size: 0.9em;">Elige una contraseña nueva para tu cuenta.</p>
+
+            <form action="/reset" method="POST" class="reset-form">
+                <input type="hidden" name="token" value="{{.Token}}">
+
+                <div class="form-group">
+                    <label for="password">Nueva contraseña:</label>
+                    <input type="password" id="password" name="password" placeholder="Mínimo 8 caracteres" minlength="8" required>
+                </div>
+
+                {{if .Error}}
+                    <span class="error-text">{{.Error}}</span>
+                {{end}}
+
+                <button type="submit">Cambiar contraseña</button>
+            </form>
+        </div>
+
+    </div>
+
+</body>
+</html>

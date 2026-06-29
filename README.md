@@ -54,6 +54,43 @@ El servidor corre en `http://localhost:8080` (puerto configurable).
 | `session_token_name` | Nombre de la cookie de sesión | `session_token` |
 | `session_expire_minutes` | Minutos hasta expirar la sesión (0 = nunca) | `0` |
 
+## Configuración de correo (`noUpload/mail.json`)
+
+Para habilitar la recuperación de contraseña por correo, crea el archivo `noUpload/mail.json` con las credenciales SMTP:
+
+```json
+{
+    "mail": "tu-correo@ejemplo.com",
+    "password": "tu-contraseña-de-aplicación",
+    "smtp_host": "smtp.gmail.com",
+    "smtp_port": 587
+}
+```
+
+> [!WARNING]
+> Este archivo contiene credenciales sensibles y está en `.gitignore`. No se sube al repositorio.
+
+### Campos
+
+| Campo | Descripción | Default |
+|---|---|---|
+| `mail` | Correo electrónico desde el que se enviarán los enlaces de recuperación | — |
+| `password` | Contraseña de aplicación (para Gmail, genera una en https://myaccount.google.com/apppasswords) | — |
+| `smtp_host` | Servidor SMTP (se autodetecta para gmail.com, outlook.com, hotmail.com, yahoo.com) | Autodetectado |
+| `smtp_port` | Puerto SMTP (587 con STARTTLS) | `587` |
+
+### Seguridad
+
+- Usa siempre una **contraseña de aplicación**, nunca tu contraseña principal.
+- El servidor SMTP debe soportar STARTTLS (puerto 587 estándar).
+- Los tokens de recuperación:
+  - Se generan con `crypto/rand` (32 bytes → 64 caracteres hex).
+  - Se almacenan hasheados con SHA-256 en la base de datos (nunca en texto plano).
+  - Expiran a la **1 hora** de su creación.
+  - Son de **un solo uso** (se eliminan al usarlos).
+  - Se limpian automáticamente cada 30 minutos.
+- No se revela si un correo está registrado o no (previene enumeración de cuentas).
+
 ## Estructura del proyecto
 
 ```
@@ -106,6 +143,10 @@ linuxforum/
 | POST   | `/profile`        | Editar perfil (nombre, descripción)       | Sí            |
 | POST   | `/save`           | Guardar post como favorito                | Sí            |
 | POST   | `/unsave`         | Quitar post de favoritos                  | Sí            |
+| GET    | `/forgot`         | Formulario de recuperación de contraseña  | No            |
+| POST   | `/forgot`         | Enviar enlace de recuperación por correo  | No            |
+| GET    | `/reset?token=X`  | Formulario para cambiar contraseña        | No (token)    |
+| POST   | `/reset`          | Ejecutar cambio de contraseña             | No (token)    |
 
 \* La confirmación requiere autenticación para ejecutar la eliminación.
 

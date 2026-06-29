@@ -180,6 +180,12 @@
                 </div>
 
                 {{if .IsOwnProfile}}
+                    {{if .Success}}
+                    <div class="profile-card" style="background:#d4edda;color:#155724;border-color:#c3e6cb;">
+                        {{.Success}}
+                    </div>
+                    {{end}}
+
                     <div class="profile-card">
                         <h3 style="margin-top:0;">Editar perfil</h3>
                         
@@ -197,10 +203,25 @@
                             <label>Descripción:
                                 <textarea name="description" rows="4" maxlength="2000" placeholder="Cuéntanos sobre ti...">{{.ProfileUser.Description}}</textarea>
                             </label>
+
+                            <label>Correo electrónico:
+                                <input type="text" name="email" value="{{.ProfileUser.Email}}" maxlength="200" placeholder="tucorreo@ejemplo.com">
+                            </label>
                             
                             <button type="submit">Guardar cambios</button>
                         </form>
                     </div>
+
+                    {{if .HasMail}}
+                    <div class="profile-card" style="border-color:#d9534f;">
+                        <h3 style="margin-top:0;color:#d9534f;">Zona peligrosa</h3>
+                        <p style="font-size:0.9em;color:gray;">Eliminarás tu cuenta, todos tus posts y tus comentarios serán marcados como eliminados. Se enviará un correo para confirmar.</p>
+                        <form action="/request-delete" method="POST" style="margin-top:10px;">
+                            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                            <button type="submit" style="padding:10px 20px;background:#d9534f;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;" onclick="return confirm('¿Estás seguro? Esta acción es irreversible. Se enviará un correo para confirmar.');">Eliminar cuenta</button>
+                        </form>
+                    </div>
+                    {{end}}
                 {{end}}
             </aside>
 

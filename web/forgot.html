@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+{{template "head" .}}
+<body class="{{.Theme}}">
+
+    {{template "upbar" .}}
+
+    <style>
+        .forgot-container {
+            max-width: 500px;
+            margin: 40px auto;
+            padding: 0 15px;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            text-decoration: none;
+        }
+
+        .forgot-card {
+            background: #fff;
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 8px;
+            padding: 30px;
+        }
+
+        .forgot-card h2 {
+            margin-top: 0;
+        }
+
+        .forgot-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 15px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .form-group label {
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .forgot-form input[type="text"] {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1em;
+        }
+
+        .forgot-form button {
+            padding: 10px;
+            background: #f0f0f0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        .forgot-form button:hover {
+            background: #e0e0e0;
+        }
+
+        .success-text {
+            color: #28a745;
+            font-size: 0.9em;
+            margin-top: 10px;
+            padding: 10px;
+            background: #d4edda;
+            border-radius: 4px;
+        }
+
+        .error-text {
+            color: #d9534f;
+            font-size: 0.85em;
+        }
+    </style>
+
+    <div class="forgot-container">
+
+        <a class="back-link" href="/web/login.html">&lt;- Volver a inicio de sesión</a>
+
+        <div class="forgot-card">
+            <h2>Recuperar contraseña</h2>
+            <p style="color: gray; font-size: 0.9em;">Ingresa el correo electrónico asociado a tu cuenta y te enviaremos un enlace para restablecer tu contraseña.</p>
+
+            {{if .Success}}
+                <div class="success-text">{{.Success}}</div>
+            {{end}}
+
+            {{if not .Success}}
+            <form action="/forgot" method="POST" class="forgot-form">
+                <div class="form-group">
+                    <label for="email">Correo electrónico:</label>
+                    <input type="text" id="email" name="email" placeholder="tucorreo@ejemplo.com" required>
+                </div>
+
+                <button type="submit">Enviar enlace de recuperación</button>
+            </form>
+            {{end}}
+        </div>
+
+    </div>
+
+</body>
+</html>

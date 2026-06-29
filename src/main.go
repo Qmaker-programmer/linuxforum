@@ -111,6 +111,7 @@ func cleanupExpiredSessions() {
 
 func main() {
 	loadConfig()
+	loadMailConfig()
 	initDB()
 
 	var userCount int
@@ -149,9 +150,39 @@ func main() {
 	http.HandleFunc("/save", handleSave)
 	http.HandleFunc("/unsave", handleUnsave)
 	http.HandleFunc("/theme", handleTheme)
+	http.HandleFunc("/forgot", handleForgot)
+	http.HandleFunc("/reset", handleReset)
+	http.HandleFunc("/activate", handleActivate)
+	http.HandleFunc("/request-delete", handleRequestDelete)
+	http.HandleFunc("/confirm-deletion", handleConfirmDeletion)
+	http.HandleFunc("/confirm-post-deletion", handleConfirmPostDeletion)
 
 	go resetRequestCounts()
 	go cleanupExpiredSessions()
+	go func() {
+		for {
+			time.Sleep(30 * time.Minute)
+			cleanupExpiredResetTokens()
+		}
+	}()
+	go func() {
+		for {
+			time.Sleep(30 * time.Minute)
+			cleanupExpiredPendingActivations()
+		}
+	}()
+	go func() {
+		for {
+			time.Sleep(30 * time.Minute)
+			cleanupExpiredPendingDeletions()
+		}
+	}()
+	go func() {
+		for {
+			time.Sleep(30 * time.Minute)
+			cleanupExpiredPendingPostDeletions()
+		}
+	}()
 
 	handler := rateLimitMiddleware(http.DefaultServeMux)
 

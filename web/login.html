@@ -108,6 +108,11 @@
         
         <a class="back-link" href="/">&lt;- Volver al inicio</a>
 
+        {{if .RegisterSuccess}}
+        <div style="background:#d4edda;color:#155724;border:1px solid #c3e6cb;border-radius:8px;padding:30px;text-align:center;font-size:1.1em;">
+            {{.RegisterSuccess}}
+        </div>
+        {{else}}
         <div class="auth-grid">
             
             <div class="auth-box">
@@ -130,6 +135,11 @@
                     
                     <button type="submit">Ingresar</button>
                 </form>
+                {{if .HasMail}}
+                <p style="margin-top: 15px; font-size: 0.85em;">
+                    <a href="/forgot" style="color: #666;">¿Olvidaste tu contraseña?</a>
+                </p>
+                {{end}}
             </div>
 
             <div class="auth-box">
@@ -150,12 +160,21 @@
                         <input type="password" id="reg_password" name="password" placeholder="Elige una contraseña" required>
                         {{if .RegisterPassError}}<span class="error-text">{{.RegisterPassError}}</span>{{end}}
                     </div>
+
+                    {{if .HasMail}}
+                    <div class="form-group">
+                        <label for="reg_email">Correo electrónico <span style="font-weight:normal;color:gray;">(necesario para recuperar contraseña)</span>:</label>
+                        <input type="text" id="reg_email" name="email" placeholder="tucorreo@ejemplo.com" value="{{.RegisterEmail}}" required>
+                        {{if .RegisterEmailError}}<span class="error-text">{{.RegisterEmailError}}</span>{{end}}
+                    </div>
+                    {{end}}
                     
                     <button type="submit">Crear Cuenta</button>
                 </form>
             </div>
 
         </div>
+        {{end}}
 
     </div>
 
