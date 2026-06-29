@@ -18,6 +18,7 @@ Un foro minimalista y autónomo escrito en Go, con SQLite, sesiones por cookie, 
 - **Todo en backend** — Sin JavaScript, solo formularios HTML y redirecciones del servidor.
 - **Dark mode** — Conmutable desde la upbar sin JS, vía cookie y CSS class, respeta la preferencia del sistema.
 - **SQLite** — Base de datos persistente con AUTOINCREMENT y WAL mode.
+- **Migraciones** — Sistema de migraciones progresivas con control de versiones.
 
 ## Stack
 
@@ -47,7 +48,7 @@ El servidor corre en `http://localhost:8080` (puerto configurable).
 | `rate_limit` | Máximo de solicitudes por ventana de tiempo | `100` |
 | `reset_minutes` | Minutos para reiniciar el contador de rate limit | `1` |
 | `port` | Puerto del servidor | `8080` |
-| `db_path` | Ruta al archivo de base de datos SQLite | `forum.db` |
+| `db_path` | Ruta al archivo de base de datos SQLite | `db/forum.db` |
 | `https` | Habilitar HTTPS | `false` |
 | `cert_file` | Ruta al certificado SSL | `cert.pem` |
 | `key_file` | Ruta a la llave SSL | `key.pem` |
@@ -97,6 +98,7 @@ Para habilitar la recuperación de contraseña por correo, crea el archivo `noUp
 linuxforum/
 ├── config.json          # Configuración general del servidor
 ├── .gitignore
+├── db/                  # Base de datos SQLite
 ├── go.mod               # Módulo Go
 ├── go.sum               # Checksum de dependencias
 ├── README.md
@@ -205,10 +207,9 @@ Cuando un usuario elimina un comentario, el sistema aplica podado ascendente aut
 
 Esto evita que el árbol de comentarios se llene de `[eliminado]` innecesarios.
 
-## Limitaciones
+## Filosofía
 
-- **Sin migraciones** — La base de datos se crea desde cero si no existe; no hay sistema de migraciones.
-- **Sin roles** — Todos los usuarios tienen el mismo nivel de permisos.
+- **Sin roles** — Todos los usuarios tienen el mismo nivel de permisos. No hay administradores ni moderadores: cero riesgo de compromiso de cuenta privilegiada.
 
 ## Licencia
 

@@ -214,6 +214,7 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 			Value:    sessionToken,
 			Path:     "/",
 			HttpOnly: true,
+			Secure:   config.HTTPS,
 			SameSite: http.SameSiteLaxMode,
 		})
 		http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -263,6 +264,7 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 			Value:    sessionToken,
 			Path:     "/",
 			HttpOnly: true,
+			Secure:   config.HTTPS,
 			SameSite: http.SameSiteLaxMode,
 		})
 		http.Redirect(w, r, "/", http.StatusSeeOther)

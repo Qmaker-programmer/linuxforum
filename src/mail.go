@@ -10,6 +10,7 @@ import (
 	"net/smtp"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -67,7 +68,9 @@ func guessSMTPHost(email string) string {
 
 func generateSessionToken() string {
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
 	return hex.EncodeToString(b)
 }
 
@@ -275,6 +278,35 @@ Este enlace expirará en 1 hora.`, postTitle, deleteLink)
 }
 
 func handleConfirmPostDeletion(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		if !validateCSRF(r) {
+			http.Error(w, "CSRF token inválido", http.StatusForbidden)
+			return
+		}
+
+		token := strings.TrimSpace(r.FormValue("token"))
+		if token == "" {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+
+		hash := sha256.Sum256([]byte(token))
+		tokenHash := hex.EncodeToString(hash[:])
+		ppd := getPendingPostDeletionByHash(tokenHash)
+		if ppd == nil {
+			http.Redirect(w, r, "/?error="+url.QueryEscape("El enlace de eliminación no es válido o ya expiró."), http.StatusSeeOther)
+			return
+		}
+
+		db.Exec("DELETE FROM comments WHERE post_id = ?", ppd.PostID)
+		db.Exec("DELETE FROM saved_posts WHERE post_id = ?", ppd.PostID)
+		db.Exec("DELETE FROM posts WHERE id = ?", ppd.PostID)
+		deletePendingPostDeletion(ppd.PostID)
+
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
 	token := strings.TrimSpace(r.URL.Query().Get("token"))
 	if token == "" {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -289,12 +321,28 @@ func handleConfirmPostDeletion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db.Exec("DELETE FROM comments WHERE post_id = ?", ppd.PostID)
-	db.Exec("DELETE FROM saved_posts WHERE post_id = ?", ppd.PostID)
-	db.Exec("DELETE FROM posts WHERE id = ?", ppd.PostID)
-	deletePendingPostDeletion(ppd.PostID)
+	post := getPostByID(ppd.PostID)
+	if post == nil {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
 
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	query, loggedUser := pageContext(r)
+	renderPage(w, "web/confirm-post-deletion.html", struct {
+		Query      string
+		LoggedUser string
+		Theme      string
+		Token      string
+		PostTitle  string
+		CSRFToken  string
+	}{
+		Query:      query,
+		LoggedUser: loggedUser,
+		Theme:      getTheme(r),
+		Token:      token,
+		PostTitle:  post.Title,
+		CSRFToken:  getCSRFToken(r),
+	})
 }
 
 func handleForgot(w http.ResponseWriter, r *http.Request) {
@@ -412,6 +460,7 @@ func handleActivate(w http.ResponseWriter, r *http.Request) {
 		Value:    sessionToken,
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   config.HTTPS,
 		SameSite: http.SameSiteLaxMode,
 	})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
