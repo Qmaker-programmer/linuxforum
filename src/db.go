@@ -1,3 +1,18 @@
+// Copyright (C) 2026 Qmaker <andresavalosgallegos@gmail.com>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 package main
 
 import (
@@ -86,6 +101,19 @@ func runMigrations() {
 					if _, err := db.Exec("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''"); err != nil {
 						panic(fmt.Sprintf("Migración %d fallida: %v", 2, err))
 					}
+				}
+			},
+		},
+		{
+			Version: 3,
+			Apply: func() {
+				if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS sessions (
+					token TEXT PRIMARY KEY,
+					username TEXT NOT NULL,
+					expires_at TEXT NOT NULL DEFAULT '',
+					csrf_token TEXT NOT NULL
+				)`); err != nil {
+					panic(fmt.Sprintf("Migración %d fallida: %v", 3, err))
 				}
 			},
 		},
@@ -262,14 +290,7 @@ func renameUser(oldName, newName string) error {
 		return fmt.Errorf("Error al renombrar usuario")
 	}
 
-	mu.Lock()
-	for token, session := range sessions {
-		if session.Username == oldName {
-			session.Username = newName
-			sessions[token] = session
-		}
-	}
-	mu.Unlock()
+	db.Exec("UPDATE sessions SET username = ? WHERE username = ?", newName, oldName)
 	return nil
 }
 
@@ -490,7 +511,41 @@ func deleteUserAccount(username string) error {
 	tx.Exec("DELETE FROM password_resets WHERE username = ?", username)
 	tx.Exec("DELETE FROM pending_activations WHERE username = ?", username)
 	tx.Exec("DELETE FROM pending_deletions WHERE username = ?", username)
+	tx.Exec("DELETE FROM sessions WHERE username = ?", username)
 	tx.Exec("DELETE FROM users WHERE username = ?", username)
 
 	return tx.Commit()
+}
+
+func saveSession(token string, session Session) error {
+	expiresAt := ""
+	if !session.ExpiresAt.IsZero() {
+		expiresAt = session.ExpiresAt.Format(time.RFC3339)
+	}
+	_, err := db.Exec("INSERT OR REPLACE INTO sessions (token, username, expires_at, csrf_token) VALUES (?, ?, ?, ?)",
+		token, session.Username, expiresAt, session.CSRFToken)
+	return err
+}
+
+func getSessionByToken(token string) *Session {
+	row := db.QueryRow("SELECT username, expires_at, csrf_token FROM sessions WHERE token = ?", token)
+	var username, expiresAtStr, csrfToken string
+	if err := row.Scan(&username, &expiresAtStr, &csrfToken); err != nil {
+		return nil
+	}
+	var expiresAt time.Time
+	if expiresAtStr != "" {
+		expiresAt, _ = time.Parse(time.RFC3339, expiresAtStr)
+	}
+	return &Session{Username: username, ExpiresAt: expiresAt, CSRFToken: csrfToken}
+}
+
+func deleteSession(token string) error {
+	_, err := db.Exec("DELETE FROM sessions WHERE token = ?", token)
+	return err
+}
+
+func deleteUserSessions(username string) error {
+	_, err := db.Exec("DELETE FROM sessions WHERE username = ?", username)
+	return err
 }

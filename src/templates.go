@@ -1,3 +1,18 @@
+// Copyright (C) 2026 Qmaker <andresavalosgallegos@gmail.com>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 package main
 
 import (
@@ -44,19 +59,15 @@ func getSession(r *http.Request) *Session {
 	if err != nil {
 		return nil
 	}
-	mu.Lock()
-	session, ok := sessions[cookie.Value]
-	mu.Unlock()
-	if !ok {
+	session := getSessionByToken(cookie.Value)
+	if session == nil {
 		return nil
 	}
 	if config.SessionExpireMinutes > 0 && time.Now().After(session.ExpiresAt) {
-		mu.Lock()
-		delete(sessions, cookie.Value)
-		mu.Unlock()
+		deleteSession(cookie.Value)
 		return nil
 	}
-	return &session
+	return session
 }
 
 func getLoggedUser(r *http.Request) string {

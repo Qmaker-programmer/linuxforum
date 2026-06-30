@@ -1,3 +1,18 @@
+// Copyright (C) 2026 Qmaker <andresavalosgallegos@gmail.com>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 package main
 
 import (
@@ -7,8 +22,6 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"golang.org/x/crypto/bcrypt"
 )
 
 func loadConfig() {
@@ -98,14 +111,7 @@ func cleanupExpiredSessions() {
 		if config.SessionExpireMinutes <= 0 {
 			continue
 		}
-		now := time.Now()
-		mu.Lock()
-		for token, session := range sessions {
-			if now.After(session.ExpiresAt) {
-				delete(sessions, token)
-			}
-		}
-		mu.Unlock()
+		db.Exec("DELETE FROM sessions WHERE expires_at != '' AND expires_at < datetime('now')")
 	}
 }
 
@@ -113,15 +119,6 @@ func main() {
 	loadConfig()
 	loadMailConfig()
 	initDB()
-
-	var userCount int
-	db.QueryRow("SELECT COUNT(*) FROM users").Scan(&userCount)
-	if userCount == 0 {
-		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("1234"), bcrypt.DefaultCost)
-		db.Exec("INSERT INTO users (username, password, description) VALUES (?, ?, ?)", "admin", string(hashedPassword), "Administrador del foro.")
-		now := time.Now().Format("2006-01-02 15:04")
-		db.Exec("INSERT INTO posts (title, user, message, created_at) VALUES (?, ?, ?, ?)", "¡Bienvenidos al nuevo foro!", "admin", "Este es el contenido completo del primer post de prueba.", now)
-	}
 
 	http.HandleFunc("/web/login.html", handleLogin)
 	http.HandleFunc("/web/public.html", handlePublic)

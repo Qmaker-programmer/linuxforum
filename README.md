@@ -35,12 +35,6 @@ go run ./src
 
 El servidor corre en `http://localhost:8080` (puerto configurable).
 
-### Cuenta de administración por defecto
-
-| Usuario | Contraseña |
-|---------|-----------|
-| admin   | 1234      |
-
 ## Configuración (`config.json`)
 
 | Campo | Descripción | Default |
@@ -213,4 +207,4 @@ Esto evita que el árbol de comentarios se llene de `[eliminado]` innecesarios.
 
 ## Licencia
 
-GPLv2 — Ver el archivo [LICENSE](LICENSE) para más detalles.
+GPLv3 — Ver el archivo [LICENSE](LICENSE) para más detalles.
