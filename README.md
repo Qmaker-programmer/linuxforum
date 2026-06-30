@@ -63,7 +63,7 @@ Para habilitar la recuperación de contraseña por correo, crea el archivo `noUp
 ```
 
 > [!WARNING]
-> Este archivo contiene credenciales sensibles y está en `.gitignore`. No se sube al repositorio.
+> Este archivo contiene credenciales sensibles y está en `.gitignore`. No se sube al repositorio!
 
 ### Campos
 
