@@ -39,13 +39,14 @@ const inlineScriptCSPHash = "sha256-4g4bkcBIeR3Mew6StkUoVBB57XONZZnAl2nEGi3ygw0=
 
 func loadConfig() {
 	config = Config{
-		Port:             8080,
-		DBPath:           "forum.db",
-		CertFile:         "cert.pem",
-		KeyFile:          "key.pem",
-		SessionTokenName: "session_token",
-		RateLimit:        100,
-		ResetMinutes:     1,
+		Port:                8080,
+		DBPath:              "forum.db",
+		CertFile:            "cert.pem",
+		KeyFile:             "key.pem",
+		SessionTokenName:    "session_token",
+		RateLimit:           100,
+		ResetMinutes:        1,
+		BackupIntervalHours: defaultBackupIntervalHours,
 	}
 
 	f, err := os.Open("config.json")
@@ -78,6 +79,9 @@ func loadConfig() {
 	}
 	if config.SessionTokenName == "" {
 		config.SessionTokenName = "session_token"
+	}
+	if config.BackupIntervalHours <= 0 {
+		config.BackupIntervalHours = defaultBackupIntervalHours
 	}
 }
 
@@ -215,6 +219,10 @@ func main() {
 		fmt.Println("Error al crear el directorio de subidas:", err)
 		os.Exit(1)
 	}
+	if err := ensureBackupsDir(); err != nil {
+		fmt.Println("Error al crear el directorio de backups:", err)
+		os.Exit(1)
+	}
 
 	http.HandleFunc("/web/login.html", handleLogin)
 	http.HandleFunc("/web/public.html", handlePublic)
@@ -259,6 +267,7 @@ func main() {
 
 	go resetRequestCounts()
 	go cleanupExpiredSessions()
+	go runPeriodicBackups()
 	go func() {
 		for {
 			time.Sleep(30 * time.Minute)

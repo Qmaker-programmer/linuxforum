@@ -149,6 +149,7 @@ Si ya tienes un sistema de autenticación, puedes:
 | `session_token_name` | Nombre de la cookie de sesión | `session_token` |
 | `session_expire_minutes` | Minutos hasta expirar la sesión (0 = nunca) | `0` |
 | `trust_proxy_headers` | Usar `X-Forwarded-For`/`X-Real-IP` para el rate limiting en vez de la IP de conexión | `false` |
+| `backup_interval_hours` | Horas entre backups automáticos de la base de datos | `120` (5 días) |
 
 > [!WARNING]
 > Solo activa `trust_proxy_headers` si el servidor **únicamente** recibe tráfico a través de tu reverse proxy (nginx/Apache/Caddy) y este siempre sobrescribe esos headers. Si el puerto de Linux Forum queda accesible directamente además del proxy, cualquiera puede falsificar `X-Forwarded-For` para saltarse el rate limiting o hacer que se banee la IP de otra persona. Con la configuración por defecto (`false`), el rate limiting se basa en la IP con la que el proxy se conecta a Linux Forum — si corres detrás de un proxy sin activar esta opción, todo el tráfico del sitio comparte un mismo cupo.
@@ -190,6 +191,15 @@ Para habilitar la recuperación de contraseña por correo, crea el archivo `noUp
   - Se limpian automáticamente cada 30 minutos
 - No se revela si un correo está registrado o no (previene enumeración de cuentas)
 
+## Backups
+
+Desde que arranca, Linux Forum guarda automáticamente una copia de la base de datos cada `backup_interval_hours` horas (5 días por defecto) en `db/backups/forum-YYYYMMDD-HHMMSS.db`, y deja constancia en la salida estándar (`Backup de la base de datos creado: ... - <fecha>`).
+
+- Usa `VACUUM INTO`, que genera una copia consistente aunque el servidor siga leyendo y escribiendo al mismo tiempo — a diferencia de copiar el archivo `.db` a mano, no se arriesga a perderse cambios que todavía están solo en el WAL (`forum.db-wal`)
+- El conteo de horas arranca de nuevo en cada reinicio del proceso (igual que el resto de las tareas periódicas de este proyecto); no se persiste "cuándo tocaría el próximo backup"
+- **No hay poda automática de backups viejos** — `db/backups/` crece sin límite; si te importa el espacio en disco, bórralos vos mismo (ej. un cron externo) o pedí que se agregue rotación
+- Para probar sin esperar días, bajá `backup_interval_hours` a `1` (o menos, en un entorno de prueba) y reiniciá el servidor
+
 ## Estructura del proyecto
 
 ```
@@ -197,6 +207,7 @@ linuxforum/
 ├── config.json          # Configuración general del servidor
 ├── .gitignore
 ├── db/                  # Base de datos SQLite
+│   └── backups/         # Backups automáticos (gitignored)
 ├── go.mod               # Módulo Go
 ├── go.sum               # Checksum de dependencias
 ├── README.md
@@ -209,6 +220,7 @@ linuxforum/
 │   ├── handlers.go      # Todos los HTTP handlers
 │   ├── markdown.go      # Render de Markdown (goldmark) y sanitización (bluemonday)
 │   ├── uploads.go       # Subida/validación/limpieza de imágenes
+│   ├── backup.go        # Backups periódicos de la base de datos (VACUUM INTO)
 │   └── mail.go          # SMTP y flujos de activación/reset/eliminación por correo
 └── web/
     ├── head.html            # Template <head> compartido

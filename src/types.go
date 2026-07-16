@@ -122,6 +122,7 @@ type Config struct {
 	SessionTokenName     string `json:"session_token_name"`
 	SessionExpireMinutes int    `json:"session_expire_minutes"`
 	TrustProxyHeaders    bool   `json:"trust_proxy_headers"`
+	BackupIntervalHours  int    `json:"backup_interval_hours"`
 }
 
 var db *sql.DB

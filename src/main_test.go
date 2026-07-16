@@ -22,6 +22,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -853,5 +854,52 @@ func TestLoginSuccessClearsFailures(t *testing.T) {
 
 	if locked, _ := isLoginLocked("testuser"); locked {
 		t.Error("expected failures to be cleared after a successful login")
+	}
+}
+
+func TestPerformBackupCreatesValidSnapshot(t *testing.T) {
+	setupTest(t)
+	db.Exec("INSERT INTO posts (title, user, message, created_at) VALUES (?, ?, ?, ?)", "Backup Me", "testuser", "Body", "2025-01-01 12:00")
+
+	before, _ := os.ReadDir(backupsDir)
+	beforeSet := make(map[string]bool)
+	for _, e := range before {
+		beforeSet[e.Name()] = true
+	}
+
+	performBackup()
+
+	after, err := os.ReadDir(backupsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(before)+1 {
+		t.Fatalf("expected exactly one new backup file, before=%d after=%d", len(before), len(after))
+	}
+
+	var newFile string
+	for _, e := range after {
+		if !beforeSet[e.Name()] {
+			newFile = e.Name()
+		}
+	}
+	backupPath := filepath.Join(backupsDir, newFile)
+	t.Cleanup(func() { os.Remove(backupPath) })
+
+	backupDB, err := sql.Open("sqlite3", backupPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backupDB.Close()
+
+	var title string
+	if err := backupDB.QueryRow("SELECT title FROM posts WHERE title = ?", "Backup Me").Scan(&title); err != nil {
+		t.Fatalf("expected the backup to contain the post, got error: %v", err)
+	}
+}
+
+func TestBackupIntervalHasPositiveDefault(t *testing.T) {
+	if defaultBackupIntervalHours <= 0 {
+		t.Error("defaultBackupIntervalHours must be positive so runPeriodicBackups doesn't spin with a zero-length sleep")
 	}
 }

@@ -5,3 +5,4 @@ forum.db
 *.db-shm
 noUpload/
 web/uploads/
+db/backups/
