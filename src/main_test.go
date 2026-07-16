@@ -725,3 +725,56 @@ func TestHomePagination(t *testing.T) {
 		t.Error("expected pagination info for page 2 of 2")
 	}
 }
+
+func TestClientIPIgnoresProxyHeaderByDefault(t *testing.T) {
+	mu.Lock()
+	config.TrustProxyHeaders = false
+	mu.Unlock()
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+	req.Header.Set("X-Forwarded-For", "203.0.113.7")
+
+	if ip := clientIP(req); ip != "10.0.0.1" {
+		t.Errorf("expected RemoteAddr to be used when trust_proxy_headers is off, got %s", ip)
+	}
+}
+
+func TestClientIPTrustsProxyHeaderWhenEnabled(t *testing.T) {
+	mu.Lock()
+	config.TrustProxyHeaders = true
+	mu.Unlock()
+	defer func() {
+		mu.Lock()
+		config.TrustProxyHeaders = false
+		mu.Unlock()
+	}()
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+	req.Header.Set("X-Forwarded-For", "203.0.113.7, 10.0.0.1")
+
+	if ip := clientIP(req); ip != "203.0.113.7" {
+		t.Errorf("expected first X-Forwarded-For entry, got %s", ip)
+	}
+}
+
+func TestSecurityHeadersMiddleware(t *testing.T) {
+	handler := securityHeadersMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Error("expected X-Content-Type-Options: nosniff")
+	}
+	if w.Header().Get("X-Frame-Options") != "DENY" {
+		t.Error("expected X-Frame-Options: DENY")
+	}
+	if w.Header().Get("Content-Security-Policy") == "" {
+		t.Error("expected a Content-Security-Policy header")
+	}
+}

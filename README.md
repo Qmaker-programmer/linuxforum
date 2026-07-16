@@ -110,6 +110,11 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
+> [!TIP]
+> `systemctl stop` envía SIGTERM — Linux Forum lo captura y hace un apagado ordenado (deja de aceptar conexiones nuevas, espera a que terminen las que están en curso), así que no hace falta `KillMode`/`TimeoutStopSec` especiales.
+
+Si sigues cualquiera de las tres opciones detrás de un reverse proxy (todas lo son, salvo que expongas el puerto de Linux Forum directamente a internet), activa `trust_proxy_headers` en `config.json` para que el rate limiting funcione por visitante y no por el total del tráfico del sitio — ver la tabla de configuración más abajo.
+
 ### Personalización del diseño
 
 Puedes personalizar el diseño editando los archivos en `web/`:
@@ -143,6 +148,10 @@ Si ya tienes un sistema de autenticación, puedes:
 | `key_file` | Ruta a la llave SSL | `key.pem` |
 | `session_token_name` | Nombre de la cookie de sesión | `session_token` |
 | `session_expire_minutes` | Minutos hasta expirar la sesión (0 = nunca) | `0` |
+| `trust_proxy_headers` | Usar `X-Forwarded-For`/`X-Real-IP` para el rate limiting en vez de la IP de conexión | `false` |
+
+> [!WARNING]
+> Solo activa `trust_proxy_headers` si el servidor **únicamente** recibe tráfico a través de tu reverse proxy (nginx/Apache/Caddy) y este siempre sobrescribe esos headers. Si el puerto de Linux Forum queda accesible directamente además del proxy, cualquiera puede falsificar `X-Forwarded-For` para saltarse el rate limiting o hacer que se banee la IP de otra persona. Con la configuración por defecto (`false`), el rate limiting se basa en la IP con la que el proxy se conecta a Linux Forum — si corres detrás de un proxy sin activar esta opción, todo el tráfico del sitio comparte un mismo cupo.
 
 ## Configuración de correo (`noUpload/mail.json`)
 
@@ -332,8 +341,10 @@ linuxforum/
 - **Confirmación de título** — Para eliminar un post, el usuario debe escribir el título exacto, evitando eliminaciones accidentales
 - **Sesiones por cookie** — Nombre de cookie configurable, identificador único por sesión, sin exposición de contraseñas. Las sesiones pueden expirar automáticamente
 - **Validación de entrada** — Títulos y mensajes no vacíos, nombres de usuario únicos, etc
-- **Rate limiting** — Configurable vía `config.json` para evitar abusos
+- **Rate limiting** — Configurable vía `config.json` para evitar abusos; por IP de conexión, o por `X-Forwarded-For`/`X-Real-IP` si se activa `trust_proxy_headers` (ver arriba)
 - **HTTPS** — Soporte nativo configurable vía `config.json`
+- **Headers de seguridad** — `Content-Security-Policy` (sin JS de terceros; el único script inline está anclado por hash), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy` en toda respuesta
+- **Apagado ordenado** — Ante SIGTERM/SIGINT (ej. `systemctl stop`), el servidor deja de aceptar conexiones nuevas y espera hasta 10s a que las que están en curso terminen antes de cerrar la base de datos
 - **SQLite** — Base de datos embebida con WAL mode para mejor concurrencia
 - **Markdown sanitizado** — Se renderiza con goldmark y se sanitiza con bluemonday antes de guardarse como HTML
 - **Imágenes validadas por contenido** — El tipo de archivo se determina inspeccionando los bytes reales (no la extensión ni el `Content-Type` del cliente); se limita a 5 MB y a PNG/JPEG/GIF/WEBP (sin SVG, para evitar XSS)

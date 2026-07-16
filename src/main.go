@@ -16,13 +16,26 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 )
+
+// inlineScriptCSPHash pins the Content-Security-Policy to the one
+// first-party inline <script> in web/head.html (scroll-position restore —
+// see the comment there). This is the hash of the script as html/template
+// actually renders it, not of the source file: Go's JS-context escaper
+// strips "//" comments from <script> blocks, so the two differ. If that
+// script's contents ever change, this hash must be recomputed (e.g. by
+// fetching any page and hashing the sha256 of the rendered <script> body),
+// or the script will silently stop running.
+const inlineScriptCSPHash = "sha256-4g4bkcBIeR3Mew6StkUoVBB57XONZZnAl2nEGi3ygw0="
 
 func loadConfig() {
 	config = Config{
@@ -68,12 +81,35 @@ func loadConfig() {
 	}
 }
 
+// clientIP returns the address to key rate limiting on. X-Forwarded-For
+// and X-Real-IP are only trusted when trust_proxy_headers is enabled in
+// config.json — otherwise any direct client could spoof them to dodge
+// the limit or frame another IP. Only enable it when the server is
+// actually reachable exclusively through a reverse proxy that sets
+// these headers itself (see the "Integración" section of the README).
+func clientIP(r *http.Request) string {
+	if config.TrustProxyHeaders {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			if idx := strings.Index(xff, ","); idx != -1 {
+				xff = xff[:idx]
+			}
+			return strings.TrimSpace(xff)
+		}
+		if xrip := strings.TrimSpace(r.Header.Get("X-Real-IP")); xrip != "" {
+			return xrip
+		}
+	}
+
+	ip := r.RemoteAddr
+	if idx := strings.LastIndex(ip, ":"); idx != -1 {
+		ip = ip[:idx]
+	}
+	return ip
+}
+
 func rateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := r.RemoteAddr
-		if idx := strings.LastIndex(ip, ":"); idx != -1 {
-			ip = ip[:idx]
-		}
+		ip := clientIP(r)
 
 		mu.Lock()
 		count := requestCounts[ip]
@@ -85,6 +121,24 @@ func rateLimitMiddleware(next http.Handler) http.Handler {
 		requestCounts[ip] = count + 1
 		mu.Unlock()
 
+		next.ServeHTTP(w, r)
+	})
+}
+
+// securityHeadersMiddleware adds defense-in-depth headers. There's no JS
+// in this app except the one inline script pinned by hash below (see
+// web/head.html), so script-src is about as strict as CSP gets.
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	csp := "default-src 'self'; img-src 'self'; style-src 'self' 'unsafe-inline'; " +
+		"script-src 'self' " + inlineScriptCSPHash + "; base-uri 'self'; " +
+		"form-action 'self'; frame-ancestors 'none'"
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		h.Set("Content-Security-Policy", csp)
 		next.ServeHTTP(w, r)
 	})
 }
@@ -192,9 +246,12 @@ func main() {
 		}
 	}()
 
-	handler := rateLimitMiddleware(http.DefaultServeMux)
+	handler := securityHeadersMiddleware(rateLimitMiddleware(http.DefaultServeMux))
 
 	addr := fmt.Sprintf(":%d", config.Port)
+	server := &http.Server{Addr: addr, Handler: handler}
+
+	serverErr := make(chan error, 1)
 	if config.HTTPS {
 		if _, err := os.Stat(config.CertFile); os.IsNotExist(err) {
 			fmt.Println("Error: No se encuentra", config.CertFile, ". Genera un certificado SSL.")
@@ -205,9 +262,28 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Println("Servidor corriendo con HTTPS en https://localhost" + addr)
-		http.ListenAndServeTLS(addr, config.CertFile, config.KeyFile, handler)
+		go func() { serverErr <- server.ListenAndServeTLS(config.CertFile, config.KeyFile) }()
 	} else {
 		fmt.Println("Servidor corriendo en http://localhost" + addr)
-		http.ListenAndServe(addr, handler)
+		go func() { serverErr <- server.ListenAndServe() }()
 	}
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	select {
+	case err := <-serverErr:
+		if err != nil && err != http.ErrServerClosed {
+			fmt.Println("Error del servidor:", err)
+		}
+	case <-stop:
+		fmt.Println("Apagando servidor...")
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := server.Shutdown(ctx); err != nil {
+			fmt.Println("Error al apagar el servidor:", err)
+		}
+	}
+
+	db.Close()
 }
