@@ -91,7 +91,9 @@ func generateSessionToken() string {
 
 func generateResetToken() (string, string) {
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		return "", ""
+	}
 	token := hex.EncodeToString(b)
 	hash := sha256.Sum256([]byte(token))
 	return token, hex.EncodeToString(hash[:])
@@ -219,10 +221,10 @@ func handleConfirmDeletion(w http.ResponseWriter, r *http.Request) {
 		deleteUserSessions(pd.Username)
 
 		http.SetCookie(w, &http.Cookie{
-			Name:     config.SessionTokenName,
-			Value:    "",
-			Path:     "/",
-			MaxAge:   -1,
+			Name:   config.SessionTokenName,
+			Value:  "",
+			Path:   "/",
+			MaxAge: -1,
 		})
 
 		http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -244,7 +246,7 @@ func handleConfirmDeletion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	renderPage(w, "web/confirm-deletion.html", struct {
+	renderPage(w, r, "web/confirm-deletion.html", struct {
 		Query      string
 		LoggedUser string
 		Theme      string
@@ -337,7 +339,7 @@ func handleConfirmPostDeletion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query, loggedUser := pageContext(r)
-	renderPage(w, "web/confirm-post-deletion.html", struct {
+	renderPage(w, r, "web/confirm-post-deletion.html", struct {
 		Query      string
 		LoggedUser string
 		Theme      string
@@ -359,7 +361,7 @@ func handleForgot(w http.ResponseWriter, r *http.Request) {
 	theme := getTheme(r)
 
 	if r.Method != http.MethodPost {
-		renderPage(w, "web/forgot.html", struct {
+		renderPage(w, r, "web/forgot.html", struct {
 			Query      string
 			LoggedUser string
 			Theme      string
@@ -500,7 +502,7 @@ func handleReset(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		renderPage(w, "web/reset.html", struct {
+		renderPage(w, r, "web/reset.html", struct {
 			Query      string
 			LoggedUser string
 			Theme      string
@@ -557,5 +559,5 @@ func handleReset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	markResetTokenUsed(rt.Username)
-	http.Redirect(w, r, "/web/login.html?login_user="+url.QueryEscape(rt.Username)+"&login_user_error="+url.QueryEscape(""), http.StatusSeeOther)
+	http.Redirect(w, r, "/web/login.html?login_user="+url.QueryEscape(rt.Username), http.StatusSeeOther)
 }

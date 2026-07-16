@@ -1,31 +1,33 @@
 # Linux Forum
 
-Un foro minimalista y autónomo escrito en Go, con SQLite, sesiones por cookie, configuración vía JSON, y un sistema de comentarios anidados con podado inteligente.
+¡Un foro minimalista y autónomo escrito en Go!
+
+Linux Forum es un sistema de foros ligero, rápido y fácil de integrar en cualquier sitio web. Usa SQLite, sesiones por cookie, configuración vía JSON, y cuenta con un sistema de comentarios anidados con podado inteligente. ¡Sin JavaScript, sin frameworks, solo Go puro!
 
 ## Características
 
-- **Publicaciones** — Creación, visualización, eliminación (solo autor, con confirmación del título) y filtrado por fecha/título.
-- **Filtrado** — Ordenar posts por fecha (asc/desc) o título (A-Z / Z-A) desde la página principal y desde los resultados de búsqueda.
-- **Comentarios anidados** — Respuestas en árbol con profundidad arbitraria.
-- **Podado inteligente** — Al eliminar un comentario, si todo su subárbol está muerto (solo `[eliminado]`), se elimina por completo, incluyendo ancestros muertos.
-- **Autenticación** — Registro e inicio de sesión con contraseñas hasheadas (bcrypt, coste por defecto).
-- **Sesiones** — Cookie configurable con soporte de expiración y limpieza automática de sesiones vencidas.
-- **Guardado de posts** — Marca posts como favoritos (solo visibles para el usuario).
-- **Búsquedas** — Búsqueda de publicaciones por título, búsqueda de usuarios por nombre (coincidencia parcial), búsqueda en comentarios.
-- **Perfiles** — Perfil de usuario con descripción editable y cambio de nombre de usuario.
-- **Rate limiting** — Configurable por JSON: máximo de requests por ventana de tiempo.
-- **HTTPS** — Soporte nativo configurable vía JSON.
-- **Todo en backend** — Sin JavaScript, solo formularios HTML y redirecciones del servidor.
-- **Dark mode** — Conmutable desde la upbar sin JS, vía cookie y CSS class, respeta la preferencia del sistema.
-- **SQLite** — Base de datos persistente con AUTOINCREMENT y WAL mode.
-- **Migraciones** — Sistema de migraciones progresivas con control de versiones.
+- **Publicaciones** — Creación, visualización, eliminación (solo autor, con confirmación del título) y filtrado por fecha/título
+- **Filtrado** — Ordenar posts por fecha (asc/desc) o título (A-Z / Z-A) desde la página principal y desde los resultados de búsqueda
+- **Comentarios anidados** — Respuestas en árbol con profundidad arbitraria
+- **Podado inteligente** — Al eliminar un comentario, si todo su subárbol está muerto (solo `[eliminado]`), se elimina por completo, incluyendo ancestros muertos
+- **Autenticación** — Registro e inicio de sesión con contraseñas hasheadas (bcrypt, coste por defecto)
+- **Sesiones** — Cookie configurable con soporte de expiración y limpieza automática de sesiones vencidas
+- **Guardado de posts** — Marca posts como favoritos (solo visibles para el usuario)
+- **Búsquedas** — Búsqueda de publicaciones por título, búsqueda de usuarios por nombre (coincidencia parcial), búsqueda en comentarios
+- **Perfiles** — Perfil de usuario con descripción editable y cambio de nombre de usuario
+- **Rate limiting** — Configurable por JSON: máximo de requests por ventana de tiempo
+- **HTTPS** — Soporte nativo configurable vía JSON
+- **Todo en backend** — Sin JavaScript, solo formularios HTML y redirecciones del servidor
+- **Dark mode** — Conmutable desde la upbar sin JS, vía cookie y CSS class, respeta la preferencia del sistema
+- **SQLite** — Base de datos persistente con AUTOINCREMENT y WAL mode
+- **Migraciones** — Sistema de migraciones progresivas con control de versiones
 
 ## Stack
 
 - **Lenguaje:** Go 1.25+
-- **Dependencias:** `golang.org/x/crypto` (bcrypt) y `github.com/mattn/go-sqlite3`.
-- **Frontend:** HTML templates (`html/template`), CSS plano (`style.css`) sin JavaScript ni frameworks.
-- **Base de datos:** SQLite con WAL mode.
+- **Dependencias:** `golang.org/x/crypto` (bcrypt) y `github.com/mattn/go-sqlite3`
+- **Frontend:** HTML templates (`html/template`), CSS plano (`style.css`) sin JavaScript ni frameworks
+- **Base de datos:** SQLite con WAL mode
 
 ## Instalación y uso
 
@@ -34,6 +36,94 @@ go run ./src
 ```
 
 El servidor corre en `http://localhost:8080` (puerto configurable).
+
+## Integración en tu sitio web
+
+¿Quieres agregar un foro a tu sitio existente? ¡Es súper fácil! Aquí te explico cómo:
+
+### Opción 1: Como subdominio (recomendado)
+
+1. **Configura el subdominio** en tu DNS (ej: `foro.tusitio.com`)
+2. **Ejecuta Linux Forum** en un puerto específico (ej: 8080)
+3. **Configura tu reverse proxy** (nginx, Apache, Caddy) para redirigir el subdominio al puerto de Linux Forum
+
+**Ejemplo con nginx:**
+```nginx
+server {
+    listen 80;
+    server_name foro.tusitio.com;
+
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+### Opción 2: Como subdirectorio
+
+1. **Ejecuta Linux Forum** en un puerto (ej: 8080)
+2. **Configura tu reverse proxy** para redirigir `/foro` al puerto de Linux Forum
+
+**Ejemplo con nginx:**
+```nginx
+location /foro/ {
+    proxy_pass http://localhost:8080/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+}
+```
+
+### Opción 3: Como servicio separado
+
+Si usas Docker o systemd, puedes ejecutar Linux Forum como un servicio independiente y conectarlo a tu sitio web mediante proxy.
+
+**Ejemplo con Docker:**
+```dockerfile
+FROM golang:1.25
+WORKDIR /app
+COPY . .
+RUN go build -o linuxforum ./src
+CMD ["./linuxforum"]
+```
+
+**Ejemplo con systemd:**
+```ini
+[Unit]
+Description=Linux Forum
+After=network.target
+
+[Service]
+Type=simple
+User=forum
+WorkingDirectory=/var/www/linuxforum
+ExecStart=/usr/local/bin/linuxforum
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Personalización del diseño
+
+Puedes personalizar el diseño editando los archivos en `web/`:
+- `style.css` — Estilos generales
+- `head.html` — Meta tags y enlaces CSS
+- `upbar.html` — Barra de navegación superior
+- `*.html` — Plantillas de cada página
+
+### Base de datos compartida
+
+Si quieres compartir la base de datos con tu aplicación principal:
+1. Configura `db_path` en `config.json` para apuntar a tu base de datos SQLite existente
+2. Asegúrate de que tu aplicación no interfiera con las tablas de Linux Forum
+
+### Autenticación compartida
+
+Si ya tienes un sistema de autenticación, puedes:
+1. Modificar `getSession()` en `templates.go` para validar tokens de tu sistema
+2. O usar Linux Forum como sistema de autenticación independiente
 
 ## Configuración (`config.json`)
 
@@ -63,7 +153,7 @@ Para habilitar la recuperación de contraseña por correo, crea el archivo `noUp
 ```
 
 > [!WARNING]
-> Este archivo contiene credenciales sensibles y está en `.gitignore`. No se sube al repositorio!
+> Este archivo contiene credenciales sensibles y está en `.gitignore`. No se sube al repositorio.
 
 ### Campos
 
@@ -76,15 +166,15 @@ Para habilitar la recuperación de contraseña por correo, crea el archivo `noUp
 
 ### Seguridad
 
-- Usa siempre una **contraseña de aplicación**, nunca tu contraseña principal.
-- El servidor SMTP debe soportar STARTTLS (puerto 587 estándar).
+- Usa siempre una **contraseña de aplicación**, nunca tu contraseña principal
+- El servidor SMTP debe soportar STARTTLS (puerto 587 estándar)
 - Los tokens de recuperación:
-  - Se generan con `crypto/rand` (32 bytes → 64 caracteres hex).
-  - Se almacenan hasheados con SHA-256 en la base de datos (nunca en texto plano).
-  - Expiran a la **1 hora** de su creación.
-  - Son de **un solo uso** (se eliminan al usarlos).
-  - Se limpian automáticamente cada 30 minutos.
-- No se revela si un correo está registrado o no (previene enumeración de cuentas).
+  - Se generan con `crypto/rand` (32 bytes → 64 caracteres hex)
+  - Se almacenan hasheados con SHA-256 en la base de datos (nunca en texto plano)
+  - Expiran a la **1 hora** de su creación
+  - Son de **un solo uso** (se eliminan al usarlos)
+  - Se limpian automáticamente cada 30 minutos
+- No se revela si un correo está registrado o no (previene enumeración de cuentas)
 
 ## Estructura del proyecto
 
@@ -181,14 +271,14 @@ linuxforum/
 
 ## Seguridad
 
-- **Contraseñas** hasheadas con bcrypt (coste por defecto).
-- **Autoría verificada en backend** — Tanto la eliminación de posts como de comentarios verifica que el usuario autenticado sea el autor.
-- **Confirmación de título** — Para eliminar un post, el usuario debe escribir el título exacto, evitando eliminaciones accidentales.
-- **Sesiones por cookie** — Nombre de cookie configurable, identificador único por sesión, sin exposición de contraseñas. Las sesiones pueden expirar automáticamente.
-- **Validación de entrada** — Títulos y mensajes no vacíos, nombres de usuario únicos, etc.
-- **Rate limiting** — Configurable vía `config.json` para evitar abusos.
-- **HTTPS** — Soporte nativo configurable vía `config.json`.
-- **SQLite** — Base de datos embebida con WAL mode para mejor concurrencia.
+- **Contraseñas** hasheadas con bcrypt (coste por defecto)
+- **Autoría verificada en backend** — Tanto la eliminación de posts como de comentarios verifica que el usuario autenticado sea el autor
+- **Confirmación de título** — Para eliminar un post, el usuario debe escribir el título exacto, evitando eliminaciones accidentales
+- **Sesiones por cookie** — Nombre de cookie configurable, identificador único por sesión, sin exposición de contraseñas. Las sesiones pueden expirar automáticamente
+- **Validación de entrada** — Títulos y mensajes no vacíos, nombres de usuario únicos, etc
+- **Rate limiting** — Configurable vía `config.json` para evitar abusos
+- **HTTPS** — Soporte nativo configurable vía `config.json`
+- **SQLite** — Base de datos embebida con WAL mode para mejor concurrencia
 
 ## Podado de comentarios
 
@@ -203,8 +293,22 @@ Esto evita que el árbol de comentarios se llene de `[eliminado]` innecesarios.
 
 ## Filosofía
 
-- **Sin roles** — Todos los usuarios tienen el mismo nivel de permisos. No hay administradores ni moderadores: cero riesgo de compromiso de cuenta privilegiada.
+- **Sin roles** — Todos los usuarios tienen el mismo nivel de permisos. No hay administradores ni moderadores: cero riesgo de compromiso de cuenta privilegiada
 
 ## Licencia
 
 GPLv3 — Ver el archivo [LICENSE](LICENSE) para más detalles.
+
+---
+
+## Contribuciones
+
+¡Las contribuciones son bienvenidas! Si encuentras un bug o tienes una idea para mejorar Linux Forum, siéntete libre de abrir un issue o enviar un pull request.
+
+## Soporte
+
+¿Necesitas ayuda? Abre un issue en el repositorio y te responderemos lo antes posible.
+
+---
+
+**¡Hecho con Go!**

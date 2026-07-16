@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+{{template "head" .}}
+<body class="{{.Theme}}">
+
+    {{template "upbar" .}}
+
+    <style>
+        .comment-container {
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 0 15px;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            text-decoration: none;
+        }
+
+        .editor-box {
+            background: #fff;
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .editor-header {
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .editor-header h3 {
+            margin: 0;
+        }
+
+        .editor-textarea {
+            width: 100%;
+            min-height: 200px;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+
+        .editor-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .editor-buttons button {
+            padding: 10px 20px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .btn-send {
+            background: #f0f0f0;
+        }
+
+        .btn-send:hover {
+            background: #e0e0e0;
+        }
+
+        .btn-preview {
+            background: #e8f4fd;
+            border-color: #b8daff;
+        }
+
+        .btn-preview:hover {
+            background: #d0e8f8;
+        }
+
+        .replying-to {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px 15px;
+            margin-bottom: 15px;
+        }
+
+        .replying-to strong {
+            color: #666;
+        }
+    </style>
+
+    <div class="comment-container">
+        
+        <a class="back-link" href="/view?id={{.PostID}}&from={{.From}}&query={{.SearchQuery}}#comment-{{.CommentID}}">&lt; Volver al post</a>
+
+        {{if .ParentComment}}
+        <div class="replying-to">
+            <strong>Respondiendo a:</strong> {{.ParentComment.User}} - {{.ParentComment.Time}}
+            <div style="margin-top: 5px; color: #666;">{{.ParentComment.Markdown}}</div>
+        </div>
+        {{end}}
+
+        <div class="editor-box">
+            <div class="editor-header">
+                <h3>{{if .ParentComment}}Responder comentario{{else}}Comentar{{end}}</h3>
+            </div>
+
+            <form action="/comment" method="POST">
+                <input type="hidden" name="post_id" value="{{.PostID}}">
+                <input type="hidden" name="parent_id" value="{{.ParentID}}">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <input type="hidden" name="return_to" value="/view?id={{.PostID}}&from={{.From}}&query={{.SearchQuery}}#comment-{{.CommentID}}">
+                
+                <textarea name="message" class="editor-textarea" placeholder="Escribe tu comentario en Markdown..." required>{{.Message}}</textarea>
+                
+                <div class="editor-buttons">
+                    <button type="submit" name="action" value="send" class="btn-send">Enviar</button>
+                    <button type="submit" name="action" value="preview" class="btn-preview">Previsualizar</button>
+                </div>
+            </form>
+        </div>
+
+    </div>
+
+</body>
+</html>

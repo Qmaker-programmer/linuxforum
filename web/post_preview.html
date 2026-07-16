@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+{{template "head" .}}
+<body class="{{.Theme}}">
+
+    {{template "upbar" .}}
+
+    <style>
+        .post-container {
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 0 15px;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            text-decoration: none;
+        }
+
+        .preview-notice {
+            display: inline-block;
+            background: #e8f4fd;
+            border: 1px solid #b8daff;
+            border-radius: 4px;
+            padding: 6px 12px;
+            font-size: 0.85em;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+
+        .editor-box {
+            background: #fff;
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .editor-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .editor-buttons form {
+            margin: 0;
+        }
+
+        .editor-buttons button {
+            padding: 10px 20px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .btn-send {
+            background: #f0f0f0;
+        }
+
+        .btn-send:hover {
+            background: #e0e0e0;
+        }
+
+        .btn-edit {
+            background: #fff3cd;
+            border-color: #ffc107;
+        }
+
+        .btn-edit:hover {
+            background: #ffe69c;
+        }
+    </style>
+
+    <div class="post-container">
+
+        <a class="back-link" href="/">&lt; Volver al inicio</a>
+        <br>
+        <span class="preview-notice">Previsualización — esto todavía no se ha publicado</span>
+
+        <div class="editor-box">
+            <h1 style="margin-bottom:8px;">{{.Title}}</h1>
+            <hr>
+            <div class="post-body">{{.Preview}}</div>
+
+            <div class="editor-buttons">
+                <form action="/post" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                    <input type="hidden" name="draft_id" value="{{.DraftID}}">
+                    <input type="hidden" name="title" value="{{.Title}}">
+                    <input type="hidden" name="message" value="{{.Message}}">
+                    <button type="submit" name="action" value="edit" class="btn-edit">Volver a editar</button>
+                </form>
+                <form action="/post" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                    <input type="hidden" name="draft_id" value="{{.DraftID}}">
+                    <input type="hidden" name="title" value="{{.Title}}">
+                    <input type="hidden" name="message" value="{{.Message}}">
+                    <button type="submit" name="action" value="send" class="btn-send">Publicar</button>
+                </form>
+            </div>
+        </div>
+
+    </div>
+
+</body>
+</html>

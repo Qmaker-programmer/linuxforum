@@ -26,13 +26,13 @@ import (
 
 func loadConfig() {
 	config = Config{
-		Port:                 8080,
-		DBPath:               "forum.db",
-		CertFile:             "cert.pem",
-		KeyFile:              "key.pem",
-		SessionTokenName:     "session_token",
-		RateLimit:            100,
-		ResetMinutes:         1,
+		Port:             8080,
+		DBPath:           "forum.db",
+		CertFile:         "cert.pem",
+		KeyFile:          "key.pem",
+		SessionTokenName: "session_token",
+		RateLimit:        100,
+		ResetMinutes:     1,
 	}
 
 	f, err := os.Open("config.json")
@@ -137,7 +137,12 @@ func main() {
 	http.HandleFunc("/auth", handleAuth)
 	http.HandleFunc("/logout", handleLogout)
 	http.HandleFunc("/post", handlePost)
+	http.HandleFunc("/post-form", handlePostForm)
+	http.HandleFunc("/draft", handleDraftSave)
+	http.HandleFunc("/drafts", handleDrafts)
+	http.HandleFunc("/draft-delete", handleDraftDelete)
 	http.HandleFunc("/comment", handleComment)
+	http.HandleFunc("/comment-form", handleCommentForm)
 	http.HandleFunc("/delete-comment", handleDeleteComment)
 	http.HandleFunc("/search", handleSearch)
 	http.HandleFunc("/view", handleView)

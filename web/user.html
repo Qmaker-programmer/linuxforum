@@ -230,7 +230,7 @@
                 <h3 style="margin-top: 0;">Publicaciones de {{.ProfileUser.Username}}</h3>
                 <ul class="forum-list">
                 {{range .Posts}}
-                    <li class="forum-row">
+                    <li class="forum-row" id="post-{{.ID}}">
                         <div class="row-info">
                             <a class="row-title" href="/view?id={{.ID}}&from=profile"><strong>{{.Title}}</strong></a>
                         </div>

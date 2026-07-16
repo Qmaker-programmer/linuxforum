@@ -10,6 +10,15 @@
             box-sizing: border-box;
         }
 
+        /* Enlace "Volver a X" a la última lista visitada */
+        .upbar-backlink {
+            font-size: 0.85em;
+            margin-bottom: 12px;
+        }
+        .upbar-backlink a {
+            text-decoration: none;
+        }
+
         /* Fila del logo y sesión */
         .upbar-header {
             display: flex;
@@ -86,8 +95,13 @@
             background: #e5e5e5;
         }
 
-        /* Botón de tema clásico */
-        .theme-btn {
+        /* Selector de tema desplegable (sin JS, via <details>) */
+        .theme-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        .theme-dropdown summary {
+            list-style: none;
             padding: 4px 10px;
             border: 1px solid #ccc;
             background: #f0f0f0;
@@ -95,8 +109,43 @@
             cursor: pointer;
             font-size: 0.85em;
         }
-        .theme-btn:hover {
+        .theme-dropdown summary::-webkit-details-marker {
+            display: none;
+        }
+        .theme-dropdown summary:hover {
             background: #e0e0e0;
+        }
+        .theme-menu {
+            position: absolute;
+            right: 0;
+            top: calc(100% + 4px);
+            display: flex;
+            flex-direction: column;
+            min-width: 150px;
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+            z-index: 10;
+        }
+        .theme-menu form {
+            margin: 0;
+        }
+        .theme-option {
+            width: 100%;
+            padding: 8px 12px;
+            border: none;
+            background: none;
+            text-align: left;
+            cursor: pointer;
+            font-size: 0.85em;
+        }
+        .theme-option:hover {
+            background: #f0f0f0;
+        }
+        .theme-option.active {
+            font-weight: bold;
         }
 
         /* Ajustes responsivos para móviles */
@@ -118,7 +167,7 @@
         <header class="upbar-header">
             <div class="upbar-brand">
                 <a href="/"><img src="/web/tux.png" alt="tux" width="60"></a>
-                <h2>Linux Forums</h2>
+                <h2>Linux Forum</h2>
             </div>
             
             <div class="upbar-user-zone">
@@ -129,20 +178,40 @@
                     <a href="/web/login.html"><strong>Iniciar sesión &rarr;</strong></a>
                 {{end}}
 
-                <form action="/theme" method="GET" style="margin: 0;">
-                    <input type="hidden" name="mode" value="{{if eq .Theme "dark"}}light{{else}}dark{{end}}">
-                    <button type="submit" class="theme-btn">
-                        {{if eq .Theme "dark"}}Modo claro{{else}}Modo oscuro{{end}}
-                    </button>
-                </form>
+                <details class="theme-dropdown">
+                    <summary>
+                        Tema: {{if eq .Theme "dark"}}Oscuro{{else if eq .Theme "light"}}Claro{{else}}Sistema{{end}} &#9662;
+                    </summary>
+                    <div class="theme-menu">
+                        <form action="/theme" method="GET">
+                            <input type="hidden" name="mode" value="light">
+                            <button type="submit" class="theme-option{{if eq .Theme "light"}} active{{end}}">Modo claro</button>
+                        </form>
+                        <form action="/theme" method="GET">
+                            <input type="hidden" name="mode" value="dark">
+                            <button type="submit" class="theme-option{{if eq .Theme "dark"}} active{{end}}">Modo oscuro</button>
+                        </form>
+                        <form action="/theme" method="GET">
+                            <input type="hidden" name="mode" value="system">
+                            <button type="submit" class="theme-option{{if eq .Theme "system"}} active{{end}}">Tema del sistema</button>
+                        </form>
+                    </div>
+                </details>
             </div>
         </header>
+
+        {{if backURL}}
+        <div class="upbar-backlink">
+            <a href="{{backURL}}">&larr; Volver a {{backLabel}}</a>
+        </div>
+        {{end}}
 
         <nav class="upbar-nav">
             <div class="nav-links">
                 <a href="/">&bull; Inicio</a>
                 {{if .LoggedUser}}
                     <a href="/web/public.html" style="color: green;">&bull; Publicar algo</a>
+                    <a href="/drafts">&bull; Borradores</a>
                 {{end}}
             </div>
 

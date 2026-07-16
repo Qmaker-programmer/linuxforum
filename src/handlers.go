@@ -17,6 +17,7 @@ package main
 
 import (
 	"fmt"
+	"html/template"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -32,7 +33,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/user?u="+url.QueryEscape(loggedUser), http.StatusSeeOther)
 		return
 	}
-	renderPage(w, "web/login.html", struct {
+	renderPage(w, r, "web/login.html", struct {
 		Query              string
 		LoggedUser         string
 		Theme              string
@@ -64,17 +65,12 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlePublic(w http.ResponseWriter, r *http.Request) {
-	query, loggedUser := pageContext(r)
+	_, loggedUser := pageContext(r)
 	if loggedUser == "" {
 		http.Redirect(w, r, "/web/login.html", http.StatusSeeOther)
 		return
 	}
-	renderPage(w, "web/public.html", struct {
-		Query      string
-		LoggedUser string
-		Theme      string
-		CSRFToken  string
-	}{Query: query, LoggedUser: loggedUser, Theme: getTheme(r), CSRFToken: getCSRFToken(r)})
+	http.Redirect(w, r, "/post-form", http.StatusSeeOther)
 }
 
 func handleHome(w http.ResponseWriter, r *http.Request) {
@@ -82,9 +78,10 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	setLastListCookie(w, "Inicio", "/")
 	query, loggedUser := pageContext(r)
 	allPosts := getAllPosts()
-	renderPage(w, "web/index.html", struct {
+	renderPage(w, r, "web/index.html", struct {
 		Posts      []Post
 		Query      string
 		LoggedUser string
@@ -98,23 +95,13 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleFiltered(w http.ResponseWriter, r *http.Request) {
-	sortBy := r.URL.Query().Get("sort_by")
-	switch sortBy {
-	case "date", "title":
-	default:
-		sortBy = "date"
-	}
-	order := r.URL.Query().Get("order")
-	switch order {
-	case "asc", "desc":
-	default:
-		order = "asc"
-	}
+	sortBy, order := normalizeSortParams(r.URL.Query().Get("sort_by"), r.URL.Query().Get("order"))
+	setLastListCookie(w, "publicaciones filtradas", currentURL(r))
 
 	query, loggedUser := pageContext(r)
 	allPosts := getAllPosts()
 	sorted := sortPosts(allPosts, sortBy, order)
-	renderPage(w, "web/filtered.html", struct {
+	renderPage(w, r, "web/filtered.html", struct {
 		Posts      []Post
 		Query      string
 		LoggedUser string
@@ -163,7 +150,7 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 		email := strings.TrimSpace(r.FormValue("email"))
 		if mailCfg.Mail != "" {
 			if email == "" || !strings.Contains(email, "@") || strings.Contains(email, " ") {
-				params.Set("register_user_error", "Indica un correo electrónico válido.")
+				params.Set("register_email_error", "Indica un correo electrónico válido.")
 				redirectToLogin(w, r, params)
 				return
 			}
@@ -197,7 +184,7 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 		}
 		if email != "" {
 			if !strings.Contains(email, "@") || strings.Contains(email, " ") {
-				params.Set("register_user_error", "Correo electrónico inválido.")
+				params.Set("register_email_error", "Correo electrónico inválido.")
 				redirectToLogin(w, r, params)
 				return
 			}
@@ -314,6 +301,8 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 
 		title := strings.TrimSpace(r.FormValue("title"))
 		message := strings.TrimSpace(r.FormValue("message"))
+		action := r.FormValue("action")
+		draftID, _ := strconv.Atoi(r.FormValue("draft_id"))
 
 		if title == "" || message == "" {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -328,10 +317,215 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if action == "preview" {
+			preview := renderMarkdown(message)
+			query, _ := pageContext(r)
+			renderPage(w, r, "web/post_preview.html", struct {
+				Query      string
+				Theme      string
+				LoggedUser string
+				CSRFToken  string
+				Title      string
+				Message    string
+				Preview    template.HTML
+				DraftID    int
+			}{
+				Query:      query,
+				Theme:      getTheme(r),
+				LoggedUser: username,
+				CSRFToken:  getCSRFToken(r),
+				Title:      title,
+				Message:    message,
+				Preview:    preview,
+				DraftID:    draftID,
+			})
+			return
+		}
+
+		if action == "edit" {
+			query, _ := pageContext(r)
+			renderPage(w, r, "web/edit_post.html", struct {
+				Query      string
+				Theme      string
+				LoggedUser string
+				CSRFToken  string
+				Title      string
+				Message    string
+				DraftID    int
+				Error      string
+			}{
+				Query:      query,
+				Theme:      getTheme(r),
+				LoggedUser: username,
+				CSRFToken:  getCSRFToken(r),
+				Title:      title,
+				Message:    message,
+				DraftID:    draftID,
+				Error:      "",
+			})
+			return
+		}
+
 		now := time.Now().Format("2006-01-02 15:04")
-		db.Exec("INSERT INTO posts (title, user, message, created_at) VALUES (?, ?, ?, ?)", title, username, message, now)
+		htmlContent := renderMarkdown(message)
+		if _, err := db.Exec("INSERT INTO posts (title, user, message, markdown, created_at) VALUES (?, ?, ?, ?, ?)", title, username, message, htmlContent, now); err != nil {
+			http.Error(w, "Error al crear la publicación", http.StatusInternalServerError)
+			return
+		}
+		if draftID != 0 {
+			deleteDraft(draftID, username)
+		}
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func handlePostForm(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	username := getLoggedUser(r)
+	if username == "" {
+		http.Redirect(w, r, "/web/login.html", http.StatusSeeOther)
+		return
+	}
+
+	title := ""
+	message := ""
+	draftID := 0
+	if idStr := r.URL.Query().Get("draft_id"); idStr != "" {
+		if id, err := strconv.Atoi(idStr); err == nil {
+			if draft := getDraftByID(id); draft != nil && draft.Username == username {
+				title = draft.Title
+				message = draft.Message
+				draftID = draft.ID
+			}
+		}
+	}
+
+	query, _ := pageContext(r)
+	renderPage(w, r, "web/edit_post.html", struct {
+		Query      string
+		Theme      string
+		LoggedUser string
+		CSRFToken  string
+		Title      string
+		Message    string
+		DraftID    int
+		Error      string
+	}{
+		Query:      query,
+		Theme:      getTheme(r),
+		LoggedUser: username,
+		CSRFToken:  getCSRFToken(r),
+		Title:      title,
+		Message:    message,
+		DraftID:    draftID,
+		Error:      "",
+	})
+}
+
+func handleDraftSave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	username := getLoggedUser(r)
+	if username == "" {
+		http.Error(w, "Debes iniciar sesión para guardar borradores", http.StatusUnauthorized)
+		return
+	}
+	if !validateCSRF(r) {
+		http.Error(w, "CSRF token inválido", http.StatusForbidden)
+		return
+	}
+
+	title := strings.TrimSpace(r.FormValue("title"))
+	message := strings.TrimSpace(r.FormValue("message"))
+	draftID, _ := strconv.Atoi(r.FormValue("draft_id"))
+
+	if title == "" && message == "" {
+		http.Redirect(w, r, "/post-form", http.StatusSeeOther)
+		return
+	}
+	if len(title) > maxTitleLength {
+		http.Error(w, "El título es demasiado largo", http.StatusBadRequest)
+		return
+	}
+	if len(message) > maxMessageLength {
+		http.Error(w, "El mensaje es demasiado largo", http.StatusBadRequest)
+		return
+	}
+
+	newID, err := saveDraft(draftID, username, title, message)
+	if err != nil {
+		http.Error(w, "Error al guardar el borrador", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/post-form?draft_id="+strconv.Itoa(newID), http.StatusSeeOther)
+}
+
+func handleDrafts(w http.ResponseWriter, r *http.Request) {
+	username := getLoggedUser(r)
+	if username == "" {
+		http.Redirect(w, r, "/web/login.html", http.StatusSeeOther)
+		return
+	}
+
+	sortBy, order := normalizeSortParams(r.URL.Query().Get("sort_by"), r.URL.Query().Get("order"))
+	setLastListCookie(w, "tus borradores", currentURL(r))
+
+	drafts := sortDrafts(getUserDrafts(username), sortBy, order)
+
+	query, _ := pageContext(r)
+	renderPage(w, r, "web/drafts.html", struct {
+		Query      string
+		Theme      string
+		LoggedUser string
+		CSRFToken  string
+		Drafts     []Draft
+		SortBy     string
+		Order      string
+	}{
+		Query:      query,
+		Theme:      getTheme(r),
+		LoggedUser: username,
+		CSRFToken:  getCSRFToken(r),
+		Drafts:     drafts,
+		SortBy:     sortBy,
+		Order:      order,
+	})
+}
+
+func handleDraftDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	username := getLoggedUser(r)
+	if username == "" {
+		http.Redirect(w, r, "/web/login.html", http.StatusSeeOther)
+		return
+	}
+	if !validateCSRF(r) {
+		http.Error(w, "CSRF token inválido", http.StatusForbidden)
+		return
+	}
+
+	draftID, err := strconv.Atoi(r.FormValue("draft_id"))
+	if err != nil {
+		http.Error(w, "Borrador no válido", http.StatusBadRequest)
+		return
+	}
+
+	deleteDraft(draftID, username)
+	http.Redirect(w, r, "/drafts", http.StatusSeeOther)
 }
 
 func handleComment(w http.ResponseWriter, r *http.Request) {
@@ -353,6 +547,10 @@ func handleComment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	parentID, _ := strconv.Atoi(r.FormValue("parent_id"))
+	from := r.FormValue("from")
+	query := r.FormValue("query")
+	action := r.FormValue("action")
+
 	if parentID != 0 {
 		parent := getCommentByID(parentID)
 		if parent == nil || parent.PostID != postID {
@@ -376,10 +574,156 @@ func handleComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now().Format("2006-01-02 15:04")
-	db.Exec("INSERT INTO comments (post_id, parent_id, user, message, created_at) VALUES (?, ?, ?, ?, ?)", postID, parentID, username, message, now)
+	if action == "preview" {
+		preview := renderMarkdown(message)
+		var parentComment *Comment
+		if parentID != 0 {
+			parentComment = getCommentByID(parentID)
+		}
+		upbarQuery, _ := pageContext(r)
+		renderPage(w, r, "web/comment_preview.html", struct {
+			Query         string
+			Theme         string
+			LoggedUser    string
+			CSRFToken     string
+			PostID        int
+			ParentID      int
+			ParentComment *Comment
+			From          string
+			SearchQuery   string
+			Message       string
+			Preview       template.HTML
+		}{
+			Query:         upbarQuery,
+			Theme:         getTheme(r),
+			LoggedUser:    username,
+			CSRFToken:     getCSRFToken(r),
+			PostID:        postID,
+			ParentID:      parentID,
+			ParentComment: parentComment,
+			From:          from,
+			SearchQuery:   query,
+			Message:       message,
+			Preview:       preview,
+		})
+		return
+	}
 
-	http.Redirect(w, r, "/view?id="+strconv.Itoa(postID), http.StatusSeeOther)
+	if action == "edit" {
+		var parentComment *Comment
+		if parentID != 0 {
+			parentComment = getCommentByID(parentID)
+		}
+		upbarQuery, _ := pageContext(r)
+		renderPage(w, r, "web/comment.html", struct {
+			Query         string
+			Theme         string
+			LoggedUser    string
+			CSRFToken     string
+			PostID        int
+			ParentID      int
+			ParentComment *Comment
+			From          string
+			SearchQuery   string
+			CommentID     string
+			Message       string
+			Preview       template.HTML
+		}{
+			Query:         upbarQuery,
+			Theme:         getTheme(r),
+			LoggedUser:    username,
+			CSRFToken:     getCSRFToken(r),
+			PostID:        postID,
+			ParentID:      parentID,
+			ParentComment: parentComment,
+			From:          from,
+			SearchQuery:   query,
+			CommentID:     "",
+			Message:       message,
+			Preview:       "",
+		})
+		return
+	}
+
+	now := time.Now().Format("2006-01-02 15:04")
+	htmlContent := renderMarkdown(message)
+	result, err := db.Exec("INSERT INTO comments (post_id, parent_id, user, message, markdown, created_at) VALUES (?, ?, ?, ?, ?, ?)", postID, parentID, username, message, htmlContent, now)
+	if err != nil {
+		http.Error(w, "Error al crear comentario", http.StatusInternalServerError)
+		return
+	}
+
+	commentID, _ := result.LastInsertId()
+	redirectURL := "/view?id=" + strconv.Itoa(postID)
+	if from != "" {
+		redirectURL += "&from=" + url.QueryEscape(from)
+	}
+	if query != "" {
+		redirectURL += "&query=" + url.QueryEscape(query)
+	}
+	redirectURL += "#comment-" + strconv.FormatInt(commentID, 10)
+	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+}
+
+func handleCommentForm(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	username := getLoggedUser(r)
+	if username == "" {
+		http.Redirect(w, r, "/web/login.html", http.StatusSeeOther)
+		return
+	}
+
+	postID, err := strconv.Atoi(r.FormValue("post_id"))
+	if err != nil || getPostByID(postID) == nil {
+		http.Error(w, "Post no válido", http.StatusBadRequest)
+		return
+	}
+
+	parentID, _ := strconv.Atoi(r.FormValue("parent_id"))
+	from := r.FormValue("from")
+	query := r.FormValue("query")
+
+	var parentComment *Comment
+	if parentID != 0 {
+		parentComment = getCommentByID(parentID)
+		if parentComment == nil || parentComment.PostID != postID {
+			http.Error(w, "Comentario padre no válido", http.StatusBadRequest)
+			return
+		}
+	}
+
+	upbarQuery, _ := pageContext(r)
+	renderPage(w, r, "web/comment.html", struct {
+		Query         string
+		Theme         string
+		LoggedUser    string
+		CSRFToken     string
+		PostID        int
+		ParentID      int
+		ParentComment *Comment
+		From          string
+		SearchQuery   string
+		CommentID     string
+		Message       string
+		Preview       template.HTML
+	}{
+		Query:         upbarQuery,
+		Theme:         getTheme(r),
+		LoggedUser:    username,
+		CSRFToken:     getCSRFToken(r),
+		PostID:        postID,
+		ParentID:      parentID,
+		ParentComment: parentComment,
+		From:          from,
+		SearchQuery:   query,
+		CommentID:     "",
+		Message:       "",
+		Preview:       "",
+	})
 }
 
 func handleDeleteComment(w http.ResponseWriter, r *http.Request) {
@@ -422,6 +766,7 @@ func handleDeleteComment(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleSearch(w http.ResponseWriter, r *http.Request) {
+	setLastListCookie(w, "resultados de búsqueda", currentURL(r))
 	searchQuery := r.URL.Query().Get("query")
 	if searchQuery != "" {
 		setSearchQueryCookie(w, searchQuery)
@@ -431,12 +776,12 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	var matchedPosts []Post
 	if searchQuery != "" {
-		rows, err := db.Query("SELECT id, title, user, message, created_at FROM posts WHERE LOWER(title) LIKE ? ORDER BY created_at DESC", "%"+strings.ToLower(searchQuery)+"%")
+		rows, err := db.Query("SELECT id, title, user, message, markdown, created_at FROM posts WHERE LOWER(title) LIKE ? ORDER BY created_at DESC", "%"+strings.ToLower(searchQuery)+"%")
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var p Post
-				rows.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Time)
+				rows.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Markdown, &p.Time)
 				matchedPosts = append(matchedPosts, p)
 			}
 		}
@@ -448,20 +793,13 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 		matchedUsers = searchUsers(userQuery)
 	}
 
-	sortBy := r.URL.Query().Get("sort_by")
-	if sortBy == "" {
-		sortBy = "date"
-	}
-	order := r.URL.Query().Get("order")
-	if order == "" {
-		order = "asc"
-	}
+	sortBy, order := normalizeSortParams(r.URL.Query().Get("sort_by"), r.URL.Query().Get("order"))
 
 	matchedPosts = sortPosts(matchedPosts, sortBy, order)
 
 	_, loggedUser := pageContext(r)
 	theme := getTheme(r)
-	renderPage(w, "web/search.html", struct {
+	renderPage(w, r, "web/search.html", struct {
 		Query      string
 		Posts      []Post
 		Users      []string
@@ -529,7 +867,7 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 	postComments := getCommentsForPost(id)
 	query, loggedUser := pageContext(r)
 
-	renderPage(w, "web/post.html", struct {
+	renderPage(w, r, "web/post.html", struct {
 		Post            *Post
 		From            string
 		SearchQuery     string
@@ -627,7 +965,7 @@ func handleConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	renderPage(w, "web/confirm.html", struct {
+	renderPage(w, r, "web/confirm.html", struct {
 		Query      string
 		LoggedUser string
 		Theme      string
@@ -690,7 +1028,7 @@ func handleUser(w http.ResponseWriter, r *http.Request) {
 		data.SavedPosts = getSavedPosts(username)
 	}
 
-	renderPage(w, "web/user.html", data)
+	renderPage(w, r, "web/user.html", data)
 }
 
 func handleProfile(w http.ResponseWriter, r *http.Request) {
@@ -814,7 +1152,7 @@ func handleUnsave(w http.ResponseWriter, r *http.Request) {
 
 func handleTheme(w http.ResponseWriter, r *http.Request) {
 	mode := r.URL.Query().Get("mode")
-	if mode == "dark" || mode == "light" {
+	if mode == "dark" || mode == "light" || mode == "system" {
 		http.SetCookie(w, &http.Cookie{
 			Name:  "theme",
 			Value: mode,
@@ -835,5 +1173,3 @@ func getBaseURL(r *http.Request) string {
 	}
 	return scheme + "://" + r.Host
 }
-
-

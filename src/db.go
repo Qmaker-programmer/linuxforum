@@ -107,13 +107,46 @@ func runMigrations() {
 		{
 			Version: 3,
 			Apply: func() {
+				var count int
+				db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('posts') WHERE name='markdown'").Scan(&count)
+				if count == 0 {
+					if _, err := db.Exec("ALTER TABLE posts ADD COLUMN markdown TEXT NOT NULL DEFAULT ''"); err != nil {
+						panic(fmt.Sprintf("Migración %d fallida: %v", 3, err))
+					}
+				}
+				db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('comments') WHERE name='markdown'").Scan(&count)
+				if count == 0 {
+					if _, err := db.Exec("ALTER TABLE comments ADD COLUMN markdown TEXT NOT NULL DEFAULT ''"); err != nil {
+						panic(fmt.Sprintf("Migración %d fallida: %v", 3, err))
+					}
+				}
+			},
+		},
+		{
+			Version: 4,
+			Apply: func() {
 				if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS sessions (
 					token TEXT PRIMARY KEY,
 					username TEXT NOT NULL,
 					expires_at TEXT NOT NULL DEFAULT '',
 					csrf_token TEXT NOT NULL
 				)`); err != nil {
-					panic(fmt.Sprintf("Migración %d fallida: %v", 3, err))
+					panic(fmt.Sprintf("Migración %d fallida: %v", 4, err))
+				}
+			},
+		},
+		{
+			Version: 5,
+			Apply: func() {
+				if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS post_drafts (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					username TEXT NOT NULL,
+					title TEXT NOT NULL DEFAULT '',
+					message TEXT NOT NULL DEFAULT '',
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL
+				)`); err != nil {
+					panic(fmt.Sprintf("Migración %d fallida: %v", 5, err))
 				}
 			},
 		},
@@ -146,7 +179,7 @@ func initDB() {
 }
 
 func getAllPosts() []Post {
-	rows, err := db.Query("SELECT id, title, user, message, created_at FROM posts ORDER BY created_at DESC")
+	rows, err := db.Query("SELECT id, title, user, message, markdown, created_at FROM posts ORDER BY created_at DESC")
 	if err != nil {
 		return nil
 	}
@@ -154,7 +187,7 @@ func getAllPosts() []Post {
 	var result []Post
 	for rows.Next() {
 		var p Post
-		if err := rows.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Time); err != nil {
+		if err := rows.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Markdown, &p.Time); err != nil {
 			continue
 		}
 		result = append(result, p)
@@ -163,19 +196,19 @@ func getAllPosts() []Post {
 }
 
 func getPostByID(id int) *Post {
-	row := db.QueryRow("SELECT id, title, user, message, created_at FROM posts WHERE id = ?", id)
+	row := db.QueryRow("SELECT id, title, user, message, markdown, created_at FROM posts WHERE id = ?", id)
 	var p Post
-	if err := row.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Time); err != nil {
+	if err := row.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Markdown, &p.Time); err != nil {
 		return nil
 	}
 	return &p
 }
 
 func getCommentByID(id int) *Comment {
-	row := db.QueryRow("SELECT id, post_id, parent_id, user, message, created_at, deleted FROM comments WHERE id = ?", id)
+	row := db.QueryRow("SELECT id, post_id, parent_id, user, message, markdown, created_at, deleted FROM comments WHERE id = ?", id)
 	var c Comment
 	var deleted int
-	if err := row.Scan(&c.ID, &c.PostID, &c.ParentID, &c.User, &c.Message, &c.Time, &deleted); err != nil {
+	if err := row.Scan(&c.ID, &c.PostID, &c.ParentID, &c.User, &c.Message, &c.Markdown, &c.Time, &deleted); err != nil {
 		return nil
 	}
 	c.Deleted = deleted == 1
@@ -183,7 +216,7 @@ func getCommentByID(id int) *Comment {
 }
 
 func getCommentsForPost(postID int) []Comment {
-	rows, err := db.Query("SELECT id, post_id, parent_id, user, message, created_at, deleted FROM comments WHERE post_id = ? ORDER BY created_at ASC", postID)
+	rows, err := db.Query("SELECT id, post_id, parent_id, user, message, markdown, created_at, deleted FROM comments WHERE post_id = ? ORDER BY created_at ASC", postID)
 	if err != nil {
 		return nil
 	}
@@ -192,7 +225,7 @@ func getCommentsForPost(postID int) []Comment {
 	for rows.Next() {
 		var c Comment
 		var deleted int
-		if err := rows.Scan(&c.ID, &c.PostID, &c.ParentID, &c.User, &c.Message, &c.Time, &deleted); err != nil {
+		if err := rows.Scan(&c.ID, &c.PostID, &c.ParentID, &c.User, &c.Message, &c.Markdown, &c.Time, &deleted); err != nil {
 			continue
 		}
 		c.Deleted = deleted == 1
@@ -202,7 +235,7 @@ func getCommentsForPost(postID int) []Comment {
 }
 
 func getUserPosts(username string) []Post {
-	rows, err := db.Query("SELECT id, title, user, message, created_at FROM posts WHERE user = ? ORDER BY created_at DESC", username)
+	rows, err := db.Query("SELECT id, title, user, message, markdown, created_at FROM posts WHERE user = ? ORDER BY created_at DESC", username)
 	if err != nil {
 		return nil
 	}
@@ -210,7 +243,7 @@ func getUserPosts(username string) []Post {
 	var result []Post
 	for rows.Next() {
 		var p Post
-		if err := rows.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Time); err != nil {
+		if err := rows.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Markdown, &p.Time); err != nil {
 			continue
 		}
 		result = append(result, p)
@@ -219,7 +252,7 @@ func getUserPosts(username string) []Post {
 }
 
 func getSavedPosts(username string) []Post {
-	rows, err := db.Query("SELECT p.id, p.title, p.user, p.message, p.created_at FROM posts p JOIN saved_posts s ON p.id = s.post_id WHERE s.username = ? ORDER BY p.created_at DESC", username)
+	rows, err := db.Query("SELECT p.id, p.title, p.user, p.message, p.markdown, p.created_at FROM posts p JOIN saved_posts s ON p.id = s.post_id WHERE s.username = ? ORDER BY p.created_at DESC", username)
 	if err != nil {
 		return nil
 	}
@@ -227,7 +260,7 @@ func getSavedPosts(username string) []Post {
 	var result []Post
 	for rows.Next() {
 		var p Post
-		if err := rows.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Time); err != nil {
+		if err := rows.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Markdown, &p.Time); err != nil {
 			continue
 		}
 		result = append(result, p)
@@ -239,6 +272,60 @@ func isPostSaved(username string, postID int) bool {
 	var count int
 	db.QueryRow("SELECT COUNT(*) FROM saved_posts WHERE username = ? AND post_id = ?", username, postID).Scan(&count)
 	return count > 0
+}
+
+func getDraftByID(id int) *Draft {
+	row := db.QueryRow("SELECT id, username, title, message, created_at, updated_at FROM post_drafts WHERE id = ?", id)
+	var d Draft
+	if err := row.Scan(&d.ID, &d.Username, &d.Title, &d.Message, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		return nil
+	}
+	return &d
+}
+
+func getUserDrafts(username string) []Draft {
+	rows, err := db.Query("SELECT id, username, title, message, created_at, updated_at FROM post_drafts WHERE username = ? ORDER BY updated_at DESC", username)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var result []Draft
+	for rows.Next() {
+		var d Draft
+		if err := rows.Scan(&d.ID, &d.Username, &d.Title, &d.Message, &d.CreatedAt, &d.UpdatedAt); err != nil {
+			continue
+		}
+		result = append(result, d)
+	}
+	return result
+}
+
+func saveDraft(draftID int, username, title, message string) (int, error) {
+	now := time.Now().Format("2006-01-02 15:04")
+
+	if draftID != 0 {
+		existing := getDraftByID(draftID)
+		if existing != nil && existing.Username == username {
+			if _, err := db.Exec("UPDATE post_drafts SET title = ?, message = ?, updated_at = ? WHERE id = ?", title, message, now, draftID); err != nil {
+				return 0, err
+			}
+			return draftID, nil
+		}
+	}
+
+	res, err := db.Exec("INSERT INTO post_drafts (username, title, message, created_at, updated_at) VALUES (?, ?, ?, ?, ?)", username, title, message, now, now)
+	if err != nil {
+		return 0, err
+	}
+	newID, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	return int(newID), nil
+}
+
+func deleteDraft(draftID int, username string) {
+	db.Exec("DELETE FROM post_drafts WHERE id = ? AND username = ?", draftID, username)
 }
 
 func existsUser(username string) bool {
@@ -280,7 +367,7 @@ func renameUser(oldName, newName string) error {
 	}
 	defer tx.Rollback()
 
-	tx.Exec("INSERT INTO users (username, password, description) SELECT ?, password, description FROM users WHERE username = ?", newName, oldName)
+	tx.Exec("INSERT INTO users (username, password, description, email) SELECT ?, password, description, email FROM users WHERE username = ?", newName, oldName)
 	tx.Exec("DELETE FROM users WHERE username = ?", oldName)
 	tx.Exec("UPDATE posts SET user = ? WHERE user = ?", newName, oldName)
 	tx.Exec("UPDATE comments SET user = ? WHERE user = ?", newName, oldName)

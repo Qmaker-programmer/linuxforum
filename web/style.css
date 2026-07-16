@@ -112,8 +112,74 @@ img {
 }
 
 .inlineH {
-  margin: 0; 
+  margin: 0;
   display: inline;
+}
+
+/* =======================================================
+   ESTILOS PARA CONTENIDO MARKDOWN (posts y comentarios)
+   ======================================================= */
+
+.post-body ul,
+.comment-body ul {
+  list-style: disc;
+  padding-left: 24px;
+}
+
+.post-body ol,
+.comment-body ol {
+  padding-left: 24px;
+}
+
+.post-body li,
+.comment-body li {
+  margin: 4px 0;
+}
+
+.post-body blockquote,
+.comment-body blockquote {
+  border-left: 3px solid #ccc;
+  margin: 10px 0;
+  padding: 4px 12px;
+  color: #555;
+}
+
+.post-body pre,
+.comment-body pre {
+  background: #f5f5f5;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+  padding: 12px;
+  margin: 10px 0;
+  overflow-x: auto;
+}
+
+.post-body code,
+.comment-body code {
+  font-family: monospace;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+
+.post-body pre code,
+.comment-body pre code {
+  background: none;
+  padding: 0;
+}
+
+.post-body table,
+.comment-body table {
+  border-collapse: collapse;
+  margin: 10px 0;
+}
+
+.post-body th,
+.post-body td,
+.comment-body th,
+.comment-body td {
+  border: 1px solid #ccc;
+  padding: 6px 10px;
 }
 /* =======================================================
    ADAPTACIÓN AUTOMÁTICA DE COMPONENTES AL MODO OSCURO
@@ -170,4 +236,284 @@ body.dark .post-actions button:hover {
 body.dark .post-meta,
 body.dark .row-meta {
   color: #aaa;
+}
+
+/* Contenido Markdown (posts y comentarios) en modo oscuro */
+body.dark .post-body pre,
+body.dark .comment-body pre {
+  background: rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+body.dark .post-body code,
+body.dark .comment-body code {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+body.dark .post-body blockquote,
+body.dark .comment-body blockquote {
+  border-left-color: #555;
+  color: #aaa;
+}
+
+body.dark .post-body th,
+body.dark .post-body td,
+body.dark .comment-body th,
+body.dark .comment-body td {
+  border-color: #555;
+}
+
+/* Selector de tema desplegable en modo oscuro */
+body.dark .theme-dropdown summary {
+  background: #2d2d2d;
+  color: #ddd;
+  border-color: #555;
+}
+
+body.dark .theme-menu {
+  background: #2d2d2d;
+  border-color: #555;
+}
+
+body.dark .theme-option {
+  color: #ddd;
+}
+
+body.dark .theme-option:hover {
+  background: #3d3d3d;
+}
+
+/* Cajas de edición/borrado y avisos (post-form, comentarios, preview, borrar cuenta/post) */
+body.dark .editor-box,
+body.dark .delete-card,
+body.dark .replying-to {
+  background: #252525;
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #ddd;
+}
+
+body.dark .replying-to strong {
+  color: #aaa;
+}
+
+body.dark .preview-notice {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: #555;
+}
+
+/* Botones de los editores y filtros que tenían fondos claros fijos */
+body.dark .btn-send,
+body.dark .btn-delete,
+body.dark .filter-bar select,
+body.dark .filter-bar button {
+  background: #2d2d2d;
+  color: #ddd;
+  border-color: #555;
+}
+
+body.dark .btn-send:hover,
+body.dark .filter-bar button:hover {
+  background: #3d3d3d;
+}
+
+body.dark .btn-preview {
+  background: rgba(136, 143, 255, 0.15);
+  border-color: #556b9e;
+}
+
+body.dark .btn-preview:hover {
+  background: rgba(136, 143, 255, 0.25);
+}
+
+body.dark .btn-edit {
+  background: rgba(255, 193, 7, 0.15);
+  border-color: #a67c00;
+}
+
+body.dark .btn-edit:hover {
+  background: rgba(255, 193, 7, 0.25);
+}
+
+body.dark .btn-delete {
+  color: #ff8783;
+}
+
+body.dark .btn-delete:hover {
+  background: rgba(217, 83, 79, 0.15);
+}
+
+/* =======================================================
+   TEMA DEL SISTEMA: sigue prefers-color-scheme del SO
+   cuando el usuario elige "Tema del sistema" (body.system).
+   Es un espejo de las reglas body.dark de arriba.
+   ======================================================= */
+@media (prefers-color-scheme: dark) {
+  body.system {
+    background: #1e1e1e;
+    color: #ddd;
+  }
+
+  body.system a {
+    color: #88f;
+  }
+
+  body.system a:visited {
+    color: #b38bdb;
+  }
+
+  body.system input,
+  body.system textarea,
+  body.system select,
+  body.system button {
+    background: #2d2d2d;
+    color: #ddd;
+    border-color: #555;
+  }
+
+  body.system .post-box,
+  body.system .auth-grid,
+  body.system .alert-box,
+  body.system .profile-card,
+  body.system .post-row,
+  body.system .result-row,
+  body.system .forum-row {
+    background: #252525;
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #ddd;
+  }
+
+  body.system .sidebar,
+  body.system .filter-bar,
+  body.system .upbar-container {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  body.system .post-row:hover,
+  body.system .result-row:hover,
+  body.system .forum-row:hover {
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  body.system .profile-card pre {
+    background: rgba(0, 0, 0, 0.3);
+    color: #ccc;
+  }
+
+  body.system .clear-search-btn,
+  body.system .post-actions button {
+    background: #2d2d2d;
+    color: #ddd;
+    border-color: #555;
+  }
+  body.system .clear-search-btn:hover,
+  body.system .post-actions button:hover {
+    background: #3d3d3d;
+    color: #fff;
+  }
+
+  body.system .post-meta,
+  body.system .row-meta {
+    color: #aaa;
+  }
+
+  body.system .post-body pre,
+  body.system .comment-body pre {
+    background: rgba(0, 0, 0, 0.3);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  body.system .post-body code,
+  body.system .comment-body code {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  body.system .post-body blockquote,
+  body.system .comment-body blockquote {
+    border-left-color: #555;
+    color: #aaa;
+  }
+
+  body.system .post-body th,
+  body.system .post-body td,
+  body.system .comment-body th,
+  body.system .comment-body td {
+    border-color: #555;
+  }
+
+  body.system .theme-dropdown summary {
+    background: #2d2d2d;
+    color: #ddd;
+    border-color: #555;
+  }
+
+  body.system .theme-menu {
+    background: #2d2d2d;
+    border-color: #555;
+  }
+
+  body.system .theme-option {
+    color: #ddd;
+  }
+
+  body.system .theme-option:hover {
+    background: #3d3d3d;
+  }
+
+  body.system .editor-box,
+  body.system .delete-card,
+  body.system .replying-to {
+    background: #252525;
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #ddd;
+  }
+
+  body.system .replying-to strong {
+    color: #aaa;
+  }
+
+  body.system .preview-notice {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: #555;
+  }
+
+  body.system .btn-send,
+  body.system .btn-delete,
+  body.system .filter-bar select,
+  body.system .filter-bar button {
+    background: #2d2d2d;
+    color: #ddd;
+    border-color: #555;
+  }
+
+  body.system .btn-send:hover,
+  body.system .filter-bar button:hover {
+    background: #3d3d3d;
+  }
+
+  body.system .btn-preview {
+    background: rgba(136, 143, 255, 0.15);
+    border-color: #556b9e;
+  }
+
+  body.system .btn-preview:hover {
+    background: rgba(136, 143, 255, 0.25);
+  }
+
+  body.system .btn-edit {
+    background: rgba(255, 193, 7, 0.15);
+    border-color: #a67c00;
+  }
+
+  body.system .btn-edit:hover {
+    background: rgba(255, 193, 7, 0.25);
+  }
+
+  body.system .btn-delete {
+    color: #ff8783;
+  }
+
+  body.system .btn-delete:hover {
+    background: rgba(217, 83, 79, 0.15);
+  }
 }

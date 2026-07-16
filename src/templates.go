@@ -35,8 +35,13 @@ const (
 	maxUsernameLength    = 50
 )
 
-func renderPage(w http.ResponseWriter, pageFile string, data any) {
-	tmpl, err := template.ParseFiles("web/head.html", "web/upbar.html", pageFile)
+func renderPage(w http.ResponseWriter, r *http.Request, pageFile string, data any) {
+	backLabel, backURL := lastListBackLink(r)
+	funcMap := template.FuncMap{
+		"backLabel": func() string { return backLabel },
+		"backURL":   func() string { return backURL },
+	}
+	tmpl, err := template.New(filepath.Base(pageFile)).Funcs(funcMap).ParseFiles("web/head.html", "web/upbar.html", pageFile)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -44,6 +49,56 @@ func renderPage(w http.ResponseWriter, pageFile string, data any) {
 	if err := tmpl.ExecuteTemplate(w, filepath.Base(pageFile), data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func currentURL(r *http.Request) string {
+	target := r.URL.Path
+	if r.URL.RawQuery != "" {
+		target += "?" + r.URL.RawQuery
+	}
+	return target
+}
+
+const lastListCookie = "last_list"
+
+// setLastListCookie remembers the last "listing" page (home, filtered,
+// search, drafts) the user visited, so other pages can offer a
+// "<- Volver a X" link back to it, preserving whatever filters/sort/search
+// terms were active.
+func setLastListCookie(w http.ResponseWriter, label, target string) {
+	value := url.QueryEscape(label) + "|" + url.QueryEscape(target)
+	http.SetCookie(w, &http.Cookie{
+		Name:  lastListCookie,
+		Value: value,
+		Path:  "/",
+	})
+}
+
+// lastListBackLink returns the label/URL to show in the upbar's back-link,
+// or ("", "") if there's nothing to show: no listing visited yet, we're
+// already on that listing page, or the current page already renders its
+// own tailored back-link (post view).
+func lastListBackLink(r *http.Request) (label, target string) {
+	if r.URL.Path == "/view" {
+		return "", ""
+	}
+	cookie, err := r.Cookie(lastListCookie)
+	if err != nil {
+		return "", ""
+	}
+	parts := strings.SplitN(cookie.Value, "|", 2)
+	if len(parts) != 2 {
+		return "", ""
+	}
+	l, errL := url.QueryUnescape(parts[0])
+	t, errT := url.QueryUnescape(parts[1])
+	if errL != nil || errT != nil || t == "" {
+		return "", ""
+	}
+	if currentURL(r) == t {
+		return "", ""
+	}
+	return l, t
 }
 
 func generateCSRFToken() string {
@@ -94,12 +149,16 @@ func validateCSRF(r *http.Request) bool {
 func getTheme(r *http.Request) string {
 	cookie, err := r.Cookie("theme")
 	if err != nil {
-		return ""
+		return "system"
 	}
-	if cookie.Value == "dark" {
+	switch cookie.Value {
+	case "dark":
 		return "dark"
+	case "light":
+		return "light"
+	default:
+		return "system"
 	}
-	return ""
 }
 
 func getSearchQueryFromCookie(r *http.Request) string {
@@ -207,4 +266,37 @@ func sortPosts(posts []Post, sortBy, order string) []Post {
 		return less
 	})
 	return result
+}
+
+func sortDrafts(drafts []Draft, sortBy, order string) []Draft {
+	result := make([]Draft, len(drafts))
+	copy(result, drafts)
+
+	sort.SliceStable(result, func(i, j int) bool {
+		var less bool
+		if sortBy == "title" {
+			less = strings.ToLower(result[i].Title) < strings.ToLower(result[j].Title)
+		} else {
+			less = result[i].UpdatedAt < result[j].UpdatedAt
+		}
+		if order == "desc" {
+			return !less
+		}
+		return less
+	})
+	return result
+}
+
+func normalizeSortParams(sortBy, order string) (string, string) {
+	switch sortBy {
+	case "date", "title":
+	default:
+		sortBy = "date"
+	}
+	switch order {
+	case "asc", "desc":
+	default:
+		order = "desc"
+	}
+	return sortBy, order
 }

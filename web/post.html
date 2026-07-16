@@ -29,7 +29,6 @@
         
         /* Formato de texto del Post y Mensajes */
         .post-body, .comment-body {
-            white-space: pre-wrap; 
             word-wrap: break-word;
             line-height: 1.6;
             margin: 15px 0;
@@ -125,13 +124,13 @@
 
     <div style="max-width: 1200px; margin: 10px auto; padding: 0 15px;">
         {{if eq .From "search"}}
-            <a href="/search?query={{.SearchQuery}}">&lt;- Volver a la búsqueda: "{{.SearchQuery}}"</a>
+            <a href="/search?query={{.SearchQuery}}#post-{{.Post.ID}}">&lt;- Volver a la búsqueda: "{{.SearchQuery}}"</a>
         {{else if eq .From "filtered"}}
-            <a href="/filtered?sort_by={{.SortBy}}&order={{.Order}}">&lt;- Volver a los posts filtrados</a>
+            <a href="/filtered?sort_by={{.SortBy}}&order={{.Order}}#post-{{.Post.ID}}">&lt;- Volver a los posts filtrados</a>
         {{else if eq .From "profile"}}
-            <a href="/user?u={{.Post.User}}">&lt;- Volver al perfil de {{.Post.User}}</a>
+            <a href="/user?u={{.Post.User}}#post-{{.Post.ID}}">&lt;- Volver al perfil de {{.Post.User}}</a>
         {{else}}
-            <a href="/">&lt;- Volver a los posts</a>
+            <a href="/#post-{{.Post.ID}}">&lt;- Volver a los posts</a>
         {{end}}
     </div>
     
@@ -142,18 +141,17 @@
                 <h1 style="margin-bottom:8px;">{{.Post.Title}}</h1>
                 <p><small>Publicado por <a href="/user?u={{.Post.User}}"><strong>{{.Post.User}}</strong></a> a las {{.Post.Time}}</small></p>
                 <hr>
-                <div class="post-body">{{.Post.Message}}</div>
+                <div class="post-body">{{.Post.Markdown}}</div>
             </article>
 
             <hr>
 
             {{if .LoggedUser}}
                 <h4 style="margin-top: 15px;">Dejar un comentario</h4>
-                <form action="/comment" method="POST" style="margin-top: 10px; margin-bottom: 30px;">
+                <form action="/comment-form" method="GET" style="margin-top: 10px; margin-bottom: 30px;">
                     <input type="hidden" name="post_id" value="{{.Post.ID}}">
-                    <input type="hidden" name="parent_id" value="0">
-                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                    <textarea name="message" rows="4" style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #ccc; box-sizing: border-box; resize: vertical;" placeholder="Escribe tu comentario..." required></textarea><br><br>
+                    <input type="hidden" name="from" value="{{.From}}">
+                    <input type="hidden" name="query" value="{{.SearchQuery}}">
                     <button type="submit" style="padding: 8px 20px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-weight: bold;">Comentar</button>
                 </form>
             {{else}}
@@ -170,7 +168,7 @@
                 {{range .MatchedComments}}
                     <li class="comment-node">
                         <strong><a href="/user?u={{.User}}">{{.User}}</a></strong> a las {{.Time}}:<br>
-                        <div class="comment-body">{{if .Deleted}}<em>[eliminado]</em>{{else}}{{.Message}}{{end}}</div>
+                        <div class="comment-body">{{if .Deleted}}<em>[eliminado]</em>{{else}}{{.Markdown}}{{end}}</div>
                     </li>
                 {{else}}
                     <p>Ningún comentario coincide con tu búsqueda.</p>
@@ -249,7 +247,7 @@
         {{if .Comment.Deleted}}
             <div class="comment-body"><em>[eliminado]</em></div>
         {{else}}
-            <div class="comment-body">{{.Comment.Message}}</div>
+            <div class="comment-body">{{.Comment.Markdown}}</div>
             
             <div class="comment-actions">
                 {{if .LoggedUser}}
@@ -265,12 +263,12 @@
             </div>
 
             {{if .LoggedUser}}
-                <form action="/comment" method="POST" class="reply-form">
+                <form action="/comment-form" method="GET" class="reply-form">
                     <input type="hidden" name="post_id" value="{{.PostID}}">
                     <input type="hidden" name="parent_id" value="{{.Comment.ID}}">
-                    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-                    <textarea name="message" rows="1" placeholder="Responder a este comentario..." required></textarea>
-                    <button type="submit">Responder</button>
+                    <input type="hidden" name="from" value="{{$.From}}">
+                    <input type="hidden" name="query" value="{{$.SearchQuery}}">
+                    <button type="submit">Responder a este comentario</button>
                 </form>
             {{end}}
         {{end}}

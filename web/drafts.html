@@ -4,15 +4,20 @@
 <body class="{{.Theme}}">
 
     {{template "upbar" .}}
-    
+
     <style>
         .forum-container {
             max-width: 1000px;
             margin: 20px auto;
             padding: 0 15px;
         }
-        
-        /* Barra de filtros horizontal */
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 15px;
+            text-decoration: none;
+        }
+
         .filter-bar {
             display: flex;
             align-items: center;
@@ -41,7 +46,6 @@
             background: #e0e0e0;
         }
 
-        /* Lista de posts estilo foro clásico */
         .posts-list {
             list-style: none;
             padding: 0;
@@ -63,7 +67,7 @@
             border-bottom: none;
         }
         .post-row:hover {
-            background: rgba(0,0,0,0.01); /* Efecto sutil al pasar el mouse */
+            background: rgba(0,0,0,0.01);
         }
         .post-info {
             display: flex;
@@ -78,12 +82,29 @@
             color: gray;
             font-size: 0.85em;
         }
+        .draft-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .draft-actions form {
+            margin: 0;
+        }
+        .btn-delete {
+            padding: 5px 10px;
+            border: 1px solid rgba(217,83,79,0.3);
+            border-radius: 4px;
+            background: #fff;
+            color: #d9534f;
+            cursor: pointer;
+            font-size: 0.85em;
+        }
+        .btn-delete:hover {
+            background: #fdf0f0;
+        }
 
-        /* Ajuste responsivo */
         @media (max-width: 600px) {
-            .filter-bar {
-                flex-wrap: wrap;
-            }
+            .filter-bar { flex-wrap: wrap; }
             .post-row {
                 flex-direction: column;
                 align-items: flex-start;
@@ -93,41 +114,45 @@
     </style>
 
     <div class="forum-container">
-        
-        <h3>Discusiones Recientes</h3>
 
-        <form action="/filtered" method="GET" class="filter-bar">
+        <a class="back-link" href="/">&lt;- Volver al inicio</a>
+
+        <h3>Tus borradores</h3>
+
+        <form action="/drafts" method="GET" class="filter-bar">
             <label for="sort_by">Ordenar por:</label>
             <select name="sort_by" id="sort_by">
-                <option value="date" selected>Fecha</option>
-                <option value="title">Título</option>
+                <option value="date" {{if eq .SortBy "date"}}selected{{end}}>Fecha</option>
+                <option value="title" {{if eq .SortBy "title"}}selected{{end}}>Título</option>
             </select>
 
             <select name="order" id="order">
-                <option value="asc">Ascendente</option>
-                <option value="desc" selected>Descendente</option>
+                <option value="asc" {{if eq .Order "asc"}}selected{{end}}>Ascendente</option>
+                <option value="desc" {{if eq .Order "desc"}}selected{{end}}>Descendente</option>
             </select>
-            
+
             <button type="submit">Filtrar</button>
         </form>
 
-        <div id="forum-posts">
+        <div id="drafts-list">
             <ul class="posts-list">
-            {{range .Posts}}
-                <li class="post-row" id="post-{{.ID}}">
+            {{range .Drafts}}
+                <li class="post-row">
                     <div class="post-info">
-                        <a class="post-title" href="/view?id={{.ID}}&from=home"><strong>{{.Title}}</strong></a>
-                        <span class="post-meta">
-                            por <a href="/user?u={{.User}}">{{.User}}</a>
-                        </span>
+                        <a class="post-title" href="/post-form?draft_id={{.ID}}"><strong>{{if .Title}}{{.Title}}{{else}}(Sin título){{end}}</strong></a>
+                        <span class="post-meta">Actualizado el {{.UpdatedAt}}</span>
                     </div>
-                    <div class="post-meta">
-                        {{.Time}}
+                    <div class="draft-actions">
+                        <form action="/draft-delete" method="POST">
+                            <input type="hidden" name="draft_id" value="{{.ID}}">
+                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                            <button type="submit" class="btn-delete">Eliminar</button>
+                        </form>
                     </div>
                 </li>
             {{else}}
-                <li class="post-row" style="justify-content: center; color: gray;">
-                    No hay discusiones disponibles en este momento.
+                <li class="post-row" style="justify-content: center; color: gray; padding: 20px;">
+                    No tienes borradores guardados.
                 </li>
             {{end}}
             </ul>
@@ -135,5 +160,6 @@
 
     </div>
 
+    <hr>
 </body>
 </html>

@@ -123,7 +123,7 @@
             <div id="search-results">
                 <ul class="results-list">
                 {{range .Posts}}
-                    <li class="result-row">
+                    <li class="result-row" id="post-{{.ID}}">
                         <div class="result-info">
                             <a class="result-title" href="/view?id={{.ID}}&from=search&query={{$.Query}}"><strong>{{.Title}}</strong></a>
                             <span class="result-meta">

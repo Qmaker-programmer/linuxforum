@@ -17,16 +17,18 @@ package main
 
 import (
 	"database/sql"
+	"html/template"
 	"sync"
 	"time"
 )
 
 type Post struct {
-	ID      int
-	Title   string
-	User    string
-	Message string
-	Time    string
+	ID       int
+	Title    string
+	User     string
+	Message  string
+	Markdown template.HTML
+	Time     string
 }
 
 type Comment struct {
@@ -35,8 +37,18 @@ type Comment struct {
 	ParentID int
 	User     string
 	Message  string
+	Markdown template.HTML
 	Time     string
 	Deleted  bool
+}
+
+type Draft struct {
+	ID        int
+	Username  string
+	Title     string
+	Message   string
+	CreatedAt string
+	UpdatedAt string
 }
 
 type CommentNode struct {

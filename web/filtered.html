@@ -120,7 +120,7 @@
         <div id="forum-posts">
             <ul class="posts-list">
             {{range .Posts}}
-                <li class="post-row">
+                <li class="post-row" id="post-{{.ID}}">
                     <div class="post-info">
                         <a class="post-title" href="/view?id={{.ID}}&from=filtered&sort_by={{$.SortBy}}&order={{$.Order}}"><strong>{{.Title}}</strong></a>
                         <span class="post-meta">

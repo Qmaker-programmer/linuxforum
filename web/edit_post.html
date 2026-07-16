@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+{{template "head" .}}
+<body class="{{.Theme}}">
+
+    {{template "upbar" .}}
+
+    <style>
+        .post-container {
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 0 15px;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            text-decoration: none;
+        }
+
+        .editor-box {
+            background: #fff;
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .editor-header {
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .editor-header h3 {
+            margin: 0;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .form-group input[type="text"],
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        .editor-textarea {
+            min-height: 300px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            resize: vertical;
+        }
+
+        .editor-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .editor-buttons button {
+            padding: 10px 20px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .btn-send {
+            background: #f0f0f0;
+        }
+
+        .btn-send:hover {
+            background: #e0e0e0;
+        }
+
+        .btn-preview {
+            background: #e8f4fd;
+            border-color: #b8daff;
+        }
+
+        .btn-preview:hover {
+            background: #d0e8f8;
+        }
+
+        .btn-draft {
+            background: #eaf7ea;
+            border-color: #b8dab8;
+        }
+
+        .btn-draft:hover {
+            background: #d6f0d6;
+        }
+
+        .error-text {
+            color: #d9534f;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+    </style>
+
+    <div class="post-container">
+
+        <a class="back-link" href="/">&lt; Volver al inicio</a>
+
+        <div class="editor-box">
+            <div class="editor-header">
+                <h3>Nueva publicación</h3>
+            </div>
+
+            {{if .Error}}
+            <p class="error-text">{{.Error}}</p>
+            {{end}}
+
+            <form action="/post" method="POST">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <input type="hidden" name="draft_id" value="{{.DraftID}}">
+
+                <div class="form-group">
+                    <label for="title">Título:</label>
+                    <input type="text" id="title" name="title" value="{{.Title}}" maxlength="200" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="message">Contenido (Markdown):</label>
+                    <textarea id="message" name="message" class="editor-textarea" placeholder="Escribe tu publicación en Markdown..." required>{{.Message}}</textarea>
+                </div>
+
+                <div class="editor-buttons">
+                    <button type="submit" name="action" value="send" class="btn-send">Enviar</button>
+                    <button type="submit" name="action" value="preview" class="btn-preview">Previsualizar</button>
+                    <button type="submit" formaction="/draft" class="btn-draft">Guardar borrador</button>
+                </div>
+            </form>
+        </div>
+
+    </div>
+
+</body>
+</html>
