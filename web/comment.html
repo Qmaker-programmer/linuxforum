@@ -78,6 +78,37 @@
             background: #d0e8f8;
         }
 
+        .btn-draft {
+            background: #eaf7ea;
+            border-color: #b8dab8;
+        }
+
+        .btn-draft:hover {
+            background: #d6f0d6;
+        }
+
+        .image-upload-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .btn-image {
+            background: #fff3e0;
+            border-color: #ffcc80;
+        }
+
+        .btn-image:hover {
+            background: #ffe6c2;
+        }
+
+        .error-text {
+            color: #d9534f;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+
         .replying-to {
             background: #f8f9fa;
             border: 1px solid #dee2e6;
@@ -107,17 +138,28 @@
                 <h3>{{if .ParentComment}}Responder comentario{{else}}Comentar{{end}}</h3>
             </div>
 
-            <form action="/comment" method="POST">
+            {{if .Error}}
+            <p class="error-text">{{.Error}}</p>
+            {{end}}
+
+            <form action="/comment" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="post_id" value="{{.PostID}}">
                 <input type="hidden" name="parent_id" value="{{.ParentID}}">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <input type="hidden" name="draft_id" value="{{.DraftID}}">
                 <input type="hidden" name="return_to" value="/view?id={{.PostID}}&from={{.From}}&query={{.SearchQuery}}#comment-{{.CommentID}}">
-                
+
                 <textarea name="message" class="editor-textarea" placeholder="Escribe tu comentario en Markdown..." required>{{.Message}}</textarea>
-                
+
+                <div class="image-upload-row">
+                    <input type="file" name="image" accept="image/png,image/jpeg,image/gif,image/webp">
+                    <button type="submit" name="action" value="insert-image" class="btn-image">Insertar imagen</button>
+                </div>
+
                 <div class="editor-buttons">
                     <button type="submit" name="action" value="send" class="btn-send">Enviar</button>
                     <button type="submit" name="action" value="preview" class="btn-preview">Previsualizar</button>
+                    <button type="submit" formaction="/comment-draft" class="btn-draft">Guardar borrador</button>
                 </div>
             </form>
         </div>

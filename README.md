@@ -297,7 +297,7 @@ Esto evita que el árbol de comentarios se llene de `[eliminado]` innecesarios.
 
 ## Licencia
 
-GPLv3 — Ver el archivo [LICENSE](LICENSE) para más detalles.
+AGPLv3 — Ver el archivo [LICENSE](LICENSE) para más detalles.
 
 ---
 

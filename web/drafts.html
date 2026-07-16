@@ -103,6 +103,23 @@
             background: #fdf0f0;
         }
 
+        .drafts-columns {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+        .drafts-column {
+            flex: 1;
+            min-width: 0;
+        }
+        .drafts-column h4 {
+            margin: 0 0 10px;
+        }
+
+        @media (max-width: 700px) {
+            .drafts-columns { flex-direction: column; }
+        }
+
         @media (max-width: 600px) {
             .filter-bar { flex-wrap: wrap; }
             .post-row {
@@ -134,28 +151,56 @@
             <button type="submit">Filtrar</button>
         </form>
 
-        <div id="drafts-list">
-            <ul class="posts-list">
-            {{range .Drafts}}
-                <li class="post-row">
-                    <div class="post-info">
-                        <a class="post-title" href="/post-form?draft_id={{.ID}}"><strong>{{if .Title}}{{.Title}}{{else}}(Sin título){{end}}</strong></a>
-                        <span class="post-meta">Actualizado el {{.UpdatedAt}}</span>
-                    </div>
-                    <div class="draft-actions">
-                        <form action="/draft-delete" method="POST">
-                            <input type="hidden" name="draft_id" value="{{.ID}}">
-                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                            <button type="submit" class="btn-delete">Eliminar</button>
-                        </form>
-                    </div>
-                </li>
-            {{else}}
-                <li class="post-row" style="justify-content: center; color: gray; padding: 20px;">
-                    No tienes borradores guardados.
-                </li>
-            {{end}}
-            </ul>
+        <div class="drafts-columns">
+            <div class="drafts-column">
+                <h4>Borradores de posts</h4>
+                <ul class="posts-list">
+                {{range .Drafts}}
+                    <li class="post-row">
+                        <div class="post-info">
+                            <a class="post-title" href="/post-form?draft_id={{.ID}}"><strong>{{if .Title}}{{.Title}}{{else}}(Sin título){{end}}</strong></a>
+                            <span class="post-meta">Actualizado el {{.UpdatedAt}}</span>
+                        </div>
+                        <div class="draft-actions">
+                            <form action="/draft-delete" method="POST">
+                                <input type="hidden" name="draft_id" value="{{.ID}}">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <button type="submit" class="btn-delete">Eliminar</button>
+                            </form>
+                        </div>
+                    </li>
+                {{else}}
+                    <li class="post-row" style="justify-content: center; color: gray; padding: 20px;">
+                        No tienes borradores de posts.
+                    </li>
+                {{end}}
+                </ul>
+            </div>
+
+            <div class="drafts-column">
+                <h4>Borradores de comentarios</h4>
+                <ul class="posts-list">
+                {{range .CommentDrafts}}
+                    <li class="post-row">
+                        <div class="post-info">
+                            <a class="post-title" href="/comment-form?post_id={{.PostID}}&parent_id={{.ParentID}}&draft_id={{.ID}}"><strong>{{if .PostTitle}}{{.PostTitle}}{{else}}(post eliminado){{end}}</strong></a>
+                            <span class="post-meta">Actualizado el {{.UpdatedAt}}</span>
+                        </div>
+                        <div class="draft-actions">
+                            <form action="/comment-draft-delete" method="POST">
+                                <input type="hidden" name="draft_id" value="{{.ID}}">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <button type="submit" class="btn-delete">Eliminar</button>
+                            </form>
+                        </div>
+                    </li>
+                {{else}}
+                    <li class="post-row" style="justify-content: center; color: gray; padding: 20px;">
+                        No tienes borradores de comentarios.
+                    </li>
+                {{end}}
+                </ul>
+            </div>
         </div>
 
     </div>

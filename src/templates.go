@@ -1,16 +1,16 @@
 // Copyright (C) 2026 Qmaker <andresavalosgallegos@gmail.com>
 //
 // This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// it under the terms of the GNU Affero General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
+// GNU Affero General Public License for more details.
 //
-// You should have received a copy of the GNU General Public License
+// You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 package main
@@ -276,6 +276,25 @@ func sortDrafts(drafts []Draft, sortBy, order string) []Draft {
 		var less bool
 		if sortBy == "title" {
 			less = strings.ToLower(result[i].Title) < strings.ToLower(result[j].Title)
+		} else {
+			less = result[i].UpdatedAt < result[j].UpdatedAt
+		}
+		if order == "desc" {
+			return !less
+		}
+		return less
+	})
+	return result
+}
+
+func sortCommentDrafts(drafts []CommentDraft, sortBy, order string) []CommentDraft {
+	result := make([]CommentDraft, len(drafts))
+	copy(result, drafts)
+
+	sort.SliceStable(result, func(i, j int) bool {
+		var less bool
+		if sortBy == "title" {
+			less = strings.ToLower(result[i].PostTitle) < strings.ToLower(result[j].PostTitle)
 		} else {
 			less = result[i].UpdatedAt < result[j].UpdatedAt
 		}

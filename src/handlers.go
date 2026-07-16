@@ -1,16 +1,16 @@
 // Copyright (C) 2026 Qmaker <andresavalosgallegos@gmail.com>
 //
 // This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// it under the terms of the GNU Affero General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
+// GNU Affero General Public License for more details.
 //
-// You should have received a copy of the GNU General Public License
+// You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 package main
@@ -289,6 +289,12 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 
 func handlePost(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
+		r.Body = http.MaxBytesReader(w, r.Body, maxImageUploadSize+(1<<20))
+		if err := r.ParseMultipartForm(2 << 20); err != nil && err != http.ErrNotMultipart {
+			http.Error(w, "La solicitud es demasiado grande", http.StatusRequestEntityTooLarge)
+			return
+		}
+
 		username := getLoggedUser(r)
 		if username == "" {
 			http.Error(w, "Debes iniciar sesión para publicar", http.StatusUnauthorized)
@@ -303,6 +309,37 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		message := strings.TrimSpace(r.FormValue("message"))
 		action := r.FormValue("action")
 		draftID, _ := strconv.Atoi(r.FormValue("draft_id"))
+
+		if action == "insert-image" {
+			imageErr := ""
+			imageURL, err := saveUploadedImage(r, "image")
+			if err != nil {
+				imageErr = err.Error()
+			} else {
+				message = strings.TrimSpace(message + "\n\n![imagen](" + imageURL + ")\n")
+			}
+			query, _ := pageContext(r)
+			renderPage(w, r, "web/edit_post.html", struct {
+				Query      string
+				Theme      string
+				LoggedUser string
+				CSRFToken  string
+				Title      string
+				Message    string
+				DraftID    int
+				Error      string
+			}{
+				Query:      query,
+				Theme:      getTheme(r),
+				LoggedUser: username,
+				CSRFToken:  getCSRFToken(r),
+				Title:      title,
+				Message:    message,
+				DraftID:    draftID,
+				Error:      imageErr,
+			})
+			return
+		}
 
 		if title == "" || message == "" {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -481,24 +518,27 @@ func handleDrafts(w http.ResponseWriter, r *http.Request) {
 	setLastListCookie(w, "tus borradores", currentURL(r))
 
 	drafts := sortDrafts(getUserDrafts(username), sortBy, order)
+	commentDrafts := sortCommentDrafts(getUserCommentDrafts(username), sortBy, order)
 
 	query, _ := pageContext(r)
 	renderPage(w, r, "web/drafts.html", struct {
-		Query      string
-		Theme      string
-		LoggedUser string
-		CSRFToken  string
-		Drafts     []Draft
-		SortBy     string
-		Order      string
+		Query         string
+		Theme         string
+		LoggedUser    string
+		CSRFToken     string
+		Drafts        []Draft
+		CommentDrafts []CommentDraft
+		SortBy        string
+		Order         string
 	}{
-		Query:      query,
-		Theme:      getTheme(r),
-		LoggedUser: username,
-		CSRFToken:  getCSRFToken(r),
-		Drafts:     drafts,
-		SortBy:     sortBy,
-		Order:      order,
+		Query:         query,
+		Theme:         getTheme(r),
+		LoggedUser:    username,
+		CSRFToken:     getCSRFToken(r),
+		Drafts:        drafts,
+		CommentDrafts: commentDrafts,
+		SortBy:        sortBy,
+		Order:         order,
 	})
 }
 
@@ -528,9 +568,94 @@ func handleDraftDelete(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/drafts", http.StatusSeeOther)
 }
 
+func handleCommentDraftSave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	username := getLoggedUser(r)
+	if username == "" {
+		http.Error(w, "Debes iniciar sesión para guardar borradores", http.StatusUnauthorized)
+		return
+	}
+	if !validateCSRF(r) {
+		http.Error(w, "CSRF token inválido", http.StatusForbidden)
+		return
+	}
+
+	postID, err := strconv.Atoi(r.FormValue("post_id"))
+	if err != nil || getPostByID(postID) == nil {
+		http.Error(w, "Post no válido", http.StatusBadRequest)
+		return
+	}
+
+	parentID, _ := strconv.Atoi(r.FormValue("parent_id"))
+	from := r.FormValue("from")
+	query := r.FormValue("query")
+	message := strings.TrimSpace(r.FormValue("message"))
+	draftID, _ := strconv.Atoi(r.FormValue("draft_id"))
+
+	if message == "" {
+		http.Redirect(w, r, "/comment-form?post_id="+strconv.Itoa(postID)+"&parent_id="+strconv.Itoa(parentID), http.StatusSeeOther)
+		return
+	}
+	if len(message) > maxMessageLength {
+		http.Error(w, "El mensaje es demasiado largo", http.StatusBadRequest)
+		return
+	}
+
+	newID, err := saveCommentDraft(draftID, username, postID, parentID, message)
+	if err != nil {
+		http.Error(w, "Error al guardar el borrador", http.StatusInternalServerError)
+		return
+	}
+
+	redirectURL := "/comment-form?post_id=" + strconv.Itoa(postID) + "&parent_id=" + strconv.Itoa(parentID) + "&draft_id=" + strconv.Itoa(newID)
+	if from != "" {
+		redirectURL += "&from=" + url.QueryEscape(from)
+	}
+	if query != "" {
+		redirectURL += "&query=" + url.QueryEscape(query)
+	}
+	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+}
+
+func handleCommentDraftDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	username := getLoggedUser(r)
+	if username == "" {
+		http.Redirect(w, r, "/web/login.html", http.StatusSeeOther)
+		return
+	}
+	if !validateCSRF(r) {
+		http.Error(w, "CSRF token inválido", http.StatusForbidden)
+		return
+	}
+
+	draftID, err := strconv.Atoi(r.FormValue("draft_id"))
+	if err != nil {
+		http.Error(w, "Borrador no válido", http.StatusBadRequest)
+		return
+	}
+
+	deleteCommentDraft(draftID, username)
+	http.Redirect(w, r, "/drafts", http.StatusSeeOther)
+}
+
 func handleComment(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxImageUploadSize+(1<<20))
+	if err := r.ParseMultipartForm(2 << 20); err != nil && err != http.ErrNotMultipart {
+		http.Error(w, "La solicitud es demasiado grande", http.StatusRequestEntityTooLarge)
 		return
 	}
 
@@ -550,6 +675,7 @@ func handleComment(w http.ResponseWriter, r *http.Request) {
 	from := r.FormValue("from")
 	query := r.FormValue("query")
 	action := r.FormValue("action")
+	draftID, _ := strconv.Atoi(r.FormValue("draft_id"))
 
 	if parentID != 0 {
 		parent := getCommentByID(parentID)
@@ -565,6 +691,54 @@ func handleComment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	message := strings.TrimSpace(r.FormValue("message"))
+
+	if action == "insert-image" {
+		var parentComment *Comment
+		if parentID != 0 {
+			parentComment = getCommentByID(parentID)
+		}
+		imageErr := ""
+		imageURL, err := saveUploadedImage(r, "image")
+		if err != nil {
+			imageErr = err.Error()
+		} else {
+			message = strings.TrimSpace(message + "\n\n![imagen](" + imageURL + ")\n")
+		}
+		upbarQuery, _ := pageContext(r)
+		renderPage(w, r, "web/comment.html", struct {
+			Query         string
+			Theme         string
+			LoggedUser    string
+			CSRFToken     string
+			PostID        int
+			ParentID      int
+			ParentComment *Comment
+			From          string
+			SearchQuery   string
+			CommentID     string
+			Message       string
+			Preview       template.HTML
+			DraftID       int
+			Error         string
+		}{
+			Query:         upbarQuery,
+			Theme:         getTheme(r),
+			LoggedUser:    username,
+			CSRFToken:     getCSRFToken(r),
+			PostID:        postID,
+			ParentID:      parentID,
+			ParentComment: parentComment,
+			From:          from,
+			SearchQuery:   query,
+			CommentID:     "",
+			Message:       message,
+			Preview:       "",
+			DraftID:       draftID,
+			Error:         imageErr,
+		})
+		return
+	}
+
 	if message == "" {
 		http.Redirect(w, r, "/view?id="+strconv.Itoa(postID), http.StatusSeeOther)
 		return
@@ -593,6 +767,7 @@ func handleComment(w http.ResponseWriter, r *http.Request) {
 			SearchQuery   string
 			Message       string
 			Preview       template.HTML
+			DraftID       int
 		}{
 			Query:         upbarQuery,
 			Theme:         getTheme(r),
@@ -605,6 +780,7 @@ func handleComment(w http.ResponseWriter, r *http.Request) {
 			SearchQuery:   query,
 			Message:       message,
 			Preview:       preview,
+			DraftID:       draftID,
 		})
 		return
 	}
@@ -628,6 +804,8 @@ func handleComment(w http.ResponseWriter, r *http.Request) {
 			CommentID     string
 			Message       string
 			Preview       template.HTML
+			DraftID       int
+			Error         string
 		}{
 			Query:         upbarQuery,
 			Theme:         getTheme(r),
@@ -641,6 +819,8 @@ func handleComment(w http.ResponseWriter, r *http.Request) {
 			CommentID:     "",
 			Message:       message,
 			Preview:       "",
+			DraftID:       draftID,
+			Error:         "",
 		})
 		return
 	}
@@ -651,6 +831,9 @@ func handleComment(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Error al crear comentario", http.StatusInternalServerError)
 		return
+	}
+	if draftID != 0 {
+		deleteCommentDraft(draftID, username)
 	}
 
 	commentID, _ := result.LastInsertId()
@@ -687,6 +870,18 @@ func handleCommentForm(w http.ResponseWriter, r *http.Request) {
 	from := r.FormValue("from")
 	query := r.FormValue("query")
 
+	message := ""
+	draftID := 0
+	if idStr := r.URL.Query().Get("draft_id"); idStr != "" {
+		if id, err := strconv.Atoi(idStr); err == nil {
+			if draft := getCommentDraftByID(id); draft != nil && draft.Username == username && draft.PostID == postID {
+				message = draft.Message
+				parentID = draft.ParentID
+				draftID = draft.ID
+			}
+		}
+	}
+
 	var parentComment *Comment
 	if parentID != 0 {
 		parentComment = getCommentByID(parentID)
@@ -710,6 +905,8 @@ func handleCommentForm(w http.ResponseWriter, r *http.Request) {
 		CommentID     string
 		Message       string
 		Preview       template.HTML
+		DraftID       int
+		Error         string
 	}{
 		Query:         upbarQuery,
 		Theme:         getTheme(r),
@@ -721,8 +918,10 @@ func handleCommentForm(w http.ResponseWriter, r *http.Request) {
 		From:          from,
 		SearchQuery:   query,
 		CommentID:     "",
-		Message:       "",
+		Message:       message,
 		Preview:       "",
+		DraftID:       draftID,
+		Error:         "",
 	})
 }
 

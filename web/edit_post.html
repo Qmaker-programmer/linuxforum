@@ -106,6 +106,22 @@
             font-weight: bold;
             margin-bottom: 15px;
         }
+
+        .image-upload-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .btn-image {
+            background: #fff3e0;
+            border-color: #ffcc80;
+        }
+
+        .btn-image:hover {
+            background: #ffe6c2;
+        }
     </style>
 
     <div class="post-container">
@@ -121,7 +137,7 @@
             <p class="error-text">{{.Error}}</p>
             {{end}}
 
-            <form action="/post" method="POST">
+            <form action="/post" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 <input type="hidden" name="draft_id" value="{{.DraftID}}">
 
@@ -133,6 +149,11 @@
                 <div class="form-group">
                     <label for="message">Contenido (Markdown):</label>
                     <textarea id="message" name="message" class="editor-textarea" placeholder="Escribe tu publicación en Markdown..." required>{{.Message}}</textarea>
+                </div>
+
+                <div class="image-upload-row">
+                    <input type="file" name="image" accept="image/png,image/jpeg,image/gif,image/webp">
+                    <button type="submit" name="action" value="insert-image" class="btn-image">Insertar imagen</button>
                 </div>
 
                 <div class="editor-buttons">

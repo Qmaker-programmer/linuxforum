@@ -1,16 +1,16 @@
 // Copyright (C) 2026 Qmaker <andresavalosgallegos@gmail.com>
 //
 // This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// it under the terms of the GNU Affero General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
+// GNU Affero General Public License for more details.
 //
-// You should have received a copy of the GNU General Public License
+// You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 package main
@@ -147,6 +147,22 @@ func runMigrations() {
 					updated_at TEXT NOT NULL
 				)`); err != nil {
 					panic(fmt.Sprintf("Migración %d fallida: %v", 5, err))
+				}
+			},
+		},
+		{
+			Version: 6,
+			Apply: func() {
+				if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS comment_drafts (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					username TEXT NOT NULL,
+					post_id INTEGER NOT NULL,
+					parent_id INTEGER NOT NULL DEFAULT 0,
+					message TEXT NOT NULL DEFAULT '',
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL
+				)`); err != nil {
+					panic(fmt.Sprintf("Migración %d fallida: %v", 6, err))
 				}
 			},
 		},
@@ -326,6 +342,62 @@ func saveDraft(draftID int, username, title, message string) (int, error) {
 
 func deleteDraft(draftID int, username string) {
 	db.Exec("DELETE FROM post_drafts WHERE id = ? AND username = ?", draftID, username)
+}
+
+func getCommentDraftByID(id int) *CommentDraft {
+	row := db.QueryRow("SELECT id, username, post_id, parent_id, message, created_at, updated_at FROM comment_drafts WHERE id = ?", id)
+	var d CommentDraft
+	if err := row.Scan(&d.ID, &d.Username, &d.PostID, &d.ParentID, &d.Message, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		return nil
+	}
+	return &d
+}
+
+func getUserCommentDrafts(username string) []CommentDraft {
+	rows, err := db.Query(`SELECT cd.id, cd.username, cd.post_id, cd.parent_id, cd.message, cd.created_at, cd.updated_at, COALESCE(p.title, '')
+		FROM comment_drafts cd LEFT JOIN posts p ON cd.post_id = p.id
+		WHERE cd.username = ? ORDER BY cd.updated_at DESC`, username)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var result []CommentDraft
+	for rows.Next() {
+		var d CommentDraft
+		if err := rows.Scan(&d.ID, &d.Username, &d.PostID, &d.ParentID, &d.Message, &d.CreatedAt, &d.UpdatedAt, &d.PostTitle); err != nil {
+			continue
+		}
+		result = append(result, d)
+	}
+	return result
+}
+
+func saveCommentDraft(draftID int, username string, postID, parentID int, message string) (int, error) {
+	now := time.Now().Format("2006-01-02 15:04")
+
+	if draftID != 0 {
+		existing := getCommentDraftByID(draftID)
+		if existing != nil && existing.Username == username {
+			if _, err := db.Exec("UPDATE comment_drafts SET post_id = ?, parent_id = ?, message = ?, updated_at = ? WHERE id = ?", postID, parentID, message, now, draftID); err != nil {
+				return 0, err
+			}
+			return draftID, nil
+		}
+	}
+
+	res, err := db.Exec("INSERT INTO comment_drafts (username, post_id, parent_id, message, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)", username, postID, parentID, message, now, now)
+	if err != nil {
+		return 0, err
+	}
+	newID, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	return int(newID), nil
+}
+
+func deleteCommentDraft(draftID int, username string) {
+	db.Exec("DELETE FROM comment_drafts WHERE id = ? AND username = ?", draftID, username)
 }
 
 func existsUser(username string) bool {

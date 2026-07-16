@@ -1,16 +1,16 @@
 // Copyright (C) 2026 Qmaker <andresavalosgallegos@gmail.com>
 //
 // This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// it under the terms of the GNU Affero General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
+// GNU Affero General Public License for more details.
 //
-// You should have received a copy of the GNU General Public License
+// You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 package main
@@ -119,6 +119,10 @@ func main() {
 	loadConfig()
 	loadMailConfig()
 	initDB()
+	if err := ensureUploadsDir(); err != nil {
+		fmt.Println("Error al crear el directorio de subidas:", err)
+		os.Exit(1)
+	}
 
 	http.HandleFunc("/web/login.html", handleLogin)
 	http.HandleFunc("/web/public.html", handlePublic)
@@ -143,6 +147,8 @@ func main() {
 	http.HandleFunc("/draft-delete", handleDraftDelete)
 	http.HandleFunc("/comment", handleComment)
 	http.HandleFunc("/comment-form", handleCommentForm)
+	http.HandleFunc("/comment-draft", handleCommentDraftSave)
+	http.HandleFunc("/comment-draft-delete", handleCommentDraftDelete)
 	http.HandleFunc("/delete-comment", handleDeleteComment)
 	http.HandleFunc("/search", handleSearch)
 	http.HandleFunc("/view", handleView)

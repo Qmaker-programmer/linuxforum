@@ -4,3 +4,4 @@ forum.db
 *.db-wal
 *.db-shm
 noUpload/
+web/uploads/
