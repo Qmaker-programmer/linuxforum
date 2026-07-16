@@ -123,6 +123,7 @@ type Config struct {
 	SessionExpireMinutes int    `json:"session_expire_minutes"`
 	TrustProxyHeaders    bool   `json:"trust_proxy_headers"`
 	BackupIntervalHours  int    `json:"backup_interval_hours"`
+	MaxBackups           int    `json:"max_backups"`
 }
 
 var db *sql.DB

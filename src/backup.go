@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -51,6 +53,47 @@ func performBackup() {
 	}
 
 	fmt.Println("Backup de la base de datos creado:", backupPath, "-", now.Format("2006-01-02 15:04:05"))
+
+	pruneOldBackups()
+}
+
+// pruneOldBackups deletes the oldest backup files once there are more
+// than max_backups (config.json). 0 (the default) means no pruning —
+// backups accumulate forever until removed by hand. Backup filenames are
+// zero-padded timestamps (forum-YYYYMMDD-HHMMSS.db), so a plain
+// lexicographic sort is also a chronological sort.
+func pruneOldBackups() {
+	if config.MaxBackups <= 0 {
+		return
+	}
+
+	entries, err := os.ReadDir(backupsDir)
+	if err != nil {
+		return
+	}
+
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if strings.HasPrefix(e.Name(), "forum-") && strings.HasSuffix(e.Name(), ".db") {
+			names = append(names, e.Name())
+		}
+	}
+	if len(names) <= config.MaxBackups {
+		return
+	}
+
+	sort.Strings(names)
+	for _, name := range names[:len(names)-config.MaxBackups] {
+		path := filepath.Join(backupsDir, name)
+		if err := os.Remove(path); err != nil {
+			fmt.Println("Error al eliminar backup viejo:", path, err)
+			continue
+		}
+		fmt.Println("Backup viejo eliminado:", path)
+	}
 }
 
 // runPeriodicBackups waits backup_interval_hours (config.json) between

@@ -903,3 +903,73 @@ func TestBackupIntervalHasPositiveDefault(t *testing.T) {
 		t.Error("defaultBackupIntervalHours must be positive so runPeriodicBackups doesn't spin with a zero-length sleep")
 	}
 }
+
+func TestPruneOldBackupsKeepsOnlyMostRecent(t *testing.T) {
+	setupTest(t)
+	if err := ensureBackupsDir(); err != nil {
+		t.Fatal(err)
+	}
+
+	names := []string{
+		"forum-20250101-000000.db",
+		"forum-20250102-000000.db",
+		"forum-20250103-000000.db",
+		"forum-20250104-000000.db",
+	}
+	for _, n := range names {
+		f, err := os.Create(filepath.Join(backupsDir, n))
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.Close()
+		name := n
+		t.Cleanup(func() { os.Remove(filepath.Join(backupsDir, name)) })
+	}
+
+	mu.Lock()
+	config.MaxBackups = 2
+	mu.Unlock()
+	defer func() {
+		mu.Lock()
+		config.MaxBackups = 0
+		mu.Unlock()
+	}()
+
+	pruneOldBackups()
+
+	for _, n := range names[:2] {
+		if _, err := os.Stat(filepath.Join(backupsDir, n)); !os.IsNotExist(err) {
+			t.Errorf("expected old backup %s to be pruned", n)
+		}
+	}
+	for _, n := range names[2:] {
+		if _, err := os.Stat(filepath.Join(backupsDir, n)); err != nil {
+			t.Errorf("expected recent backup %s to still exist", n)
+		}
+	}
+}
+
+func TestPruneOldBackupsNoopWhenUnset(t *testing.T) {
+	setupTest(t)
+	if err := ensureBackupsDir(); err != nil {
+		t.Fatal(err)
+	}
+
+	name := "forum-20250101-000000.db"
+	f, err := os.Create(filepath.Join(backupsDir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	t.Cleanup(func() { os.Remove(filepath.Join(backupsDir, name)) })
+
+	mu.Lock()
+	config.MaxBackups = 0
+	mu.Unlock()
+
+	pruneOldBackups()
+
+	if _, err := os.Stat(filepath.Join(backupsDir, name)); err != nil {
+		t.Error("expected no pruning to happen when max_backups is 0")
+	}
+}
