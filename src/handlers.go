@@ -18,6 +18,7 @@ package main
 import (
 	"fmt"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -184,7 +185,7 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 			baseURL := getBaseURL(r)
 			if err := sendVerificationEmail(email, token, baseURL); err != nil {
 				deletePendingActivation(username)
-				fmt.Println("Error al enviar correo de verificación:", err)
+				slog.Error("No se pudo enviar el correo de verificación", "err", err)
 				params.Set("register_user_error", "Error al enviar el correo de verificación.")
 				redirectToLogin(w, r, params)
 				return
@@ -1179,7 +1180,7 @@ func handleConfirm(w http.ResponseWriter, r *http.Request) {
 				baseURL := getBaseURL(r)
 				if err := sendPostDeletionEmail(user.Email, post.Title, token, baseURL); err != nil {
 					deletePendingPostDeletion(post.ID)
-					fmt.Println("Error al enviar correo de eliminación:", err)
+					slog.Error("No se pudo enviar el correo de eliminación de post", "err", err)
 					http.Redirect(w, r, "/confirm?id="+idStr+"&error="+url.QueryEscape("Error al enviar el correo."), http.StatusSeeOther)
 					return
 				}

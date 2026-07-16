@@ -18,6 +18,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -193,7 +194,7 @@ func runMigrations() {
 		m.Apply()
 
 		db.Exec("INSERT INTO migrations (version, applied_at) VALUES (?, datetime('now'))", m.Version)
-		fmt.Println("Migración", m.Version, "aplicada")
+		slog.Info("Migración aplicada", "version", m.Version)
 	}
 }
 
@@ -201,7 +202,7 @@ func initDB() {
 	var err error
 	db, err = sql.Open("sqlite3", config.DBPath)
 	if err != nil {
-		fmt.Println("Error al abrir base de datos:", err)
+		slog.Error("No se pudo abrir la base de datos", "err", err)
 		panic(err)
 	}
 	db.Exec("PRAGMA journal_mode=WAL")

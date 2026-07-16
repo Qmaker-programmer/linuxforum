@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/smtp"
 	"net/url"
@@ -48,12 +49,12 @@ func loadMailConfig() {
 
 	f, err := os.Open("noUpload/mail.json")
 	if err != nil {
-		fmt.Println("Mail no configurado (noUpload/mail.json no encontrado):", err)
+		slog.Info("Mail no configurado (noUpload/mail.json no encontrado)", "err", err)
 		return
 	}
 	defer f.Close()
 	if err := json.NewDecoder(f).Decode(&mailCfg); err != nil {
-		fmt.Println("Error al decodificar noUpload/mail.json:", err)
+		slog.Warn("No se pudo decodificar noUpload/mail.json", "err", err)
 		return
 	}
 	if mailCfg.SMTPHost == "" {
@@ -190,7 +191,7 @@ func handleRequestDelete(w http.ResponseWriter, r *http.Request) {
 	baseURL := getBaseURL(r)
 	if err := sendDeletionEmail(user.Email, token, baseURL); err != nil {
 		deletePendingDeletion(loggedUser)
-		fmt.Println("Error al enviar correo de eliminación:", err)
+		slog.Error("No se pudo enviar el correo de eliminación de cuenta", "err", err)
 		http.Redirect(w, r, "/user?u="+url.QueryEscape(loggedUser)+"&error="+url.QueryEscape("Error al enviar el correo."), http.StatusSeeOther)
 		return
 	}
@@ -219,7 +220,7 @@ func handleConfirmDeletion(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if err := deleteUserAccount(pd.Username); err != nil {
-			fmt.Println("Error al eliminar cuenta:", err)
+			slog.Error("No se pudo eliminar la cuenta", "username", pd.Username, "err", err)
 			http.Redirect(w, r, "/web/login.html?login_user_error="+url.QueryEscape("Error al eliminar la cuenta."), http.StatusSeeOther)
 			return
 		}
@@ -404,7 +405,7 @@ func handleForgot(w http.ResponseWriter, r *http.Request) {
 
 	baseURL := getBaseURL(r)
 	if err := sendResetEmail(email, token, baseURL); err != nil {
-		fmt.Println("Error al enviar correo:", err)
+		slog.Error("No se pudo enviar el correo de reset de contraseña", "err", err)
 		http.Redirect(w, r, "/forgot?error="+url.QueryEscape("Error al enviar el correo. Verifica la configuración de mail."), http.StatusSeeOther)
 		return
 	}

@@ -17,6 +17,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -40,7 +41,7 @@ func ensureBackupsDir() error {
 // still sitting in the -wal file).
 func performBackup() {
 	if err := ensureBackupsDir(); err != nil {
-		fmt.Println("Error al crear el directorio de backups:", err)
+		slog.Error("No se pudo crear el directorio de backups", "err", err)
 		return
 	}
 
@@ -48,11 +49,11 @@ func performBackup() {
 	backupPath := filepath.Join(backupsDir, fmt.Sprintf("forum-%s.db", now.Format("20060102-150405")))
 
 	if _, err := db.Exec("VACUUM INTO ?", backupPath); err != nil {
-		fmt.Println("Error al hacer backup de la base de datos:", err)
+		slog.Error("No se pudo hacer el backup de la base de datos", "err", err)
 		return
 	}
 
-	fmt.Println("Backup de la base de datos creado:", backupPath, "-", now.Format("2006-01-02 15:04:05"))
+	slog.Info("Backup de la base de datos creado", "path", backupPath)
 
 	pruneOldBackups()
 }
@@ -89,10 +90,10 @@ func pruneOldBackups() {
 	for _, name := range names[:len(names)-config.MaxBackups] {
 		path := filepath.Join(backupsDir, name)
 		if err := os.Remove(path); err != nil {
-			fmt.Println("Error al eliminar backup viejo:", path, err)
+			slog.Error("No se pudo eliminar un backup viejo", "path", path, "err", err)
 			continue
 		}
-		fmt.Println("Backup viejo eliminado:", path)
+		slog.Info("Backup viejo eliminado", "path", path)
 	}
 }
 

@@ -18,6 +18,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -971,5 +972,24 @@ func TestPruneOldBackupsNoopWhenUnset(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(backupsDir, name)); err != nil {
 		t.Error("expected no pruning to happen when max_backups is 0")
+	}
+}
+
+func TestApplyLogLevel(t *testing.T) {
+	cases := map[string]slog.Level{
+		"debug":    slog.LevelDebug,
+		"info":     slog.LevelInfo,
+		"warn":     slog.LevelWarn,
+		"warning":  slog.LevelWarn,
+		"error":    slog.LevelError,
+		"":         slog.LevelInfo,
+		"nonsense": slog.LevelInfo,
+		"DEBUG":    slog.LevelDebug,
+	}
+	for input, want := range cases {
+		applyLogLevel(input)
+		if got := logLevel.Level(); got != want {
+			t.Errorf("applyLogLevel(%q): expected level %v, got %v", input, want, got)
+		}
 	}
 }

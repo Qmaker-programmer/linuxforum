@@ -124,6 +124,7 @@ type Config struct {
 	TrustProxyHeaders    bool   `json:"trust_proxy_headers"`
 	BackupIntervalHours  int    `json:"backup_interval_hours"`
 	MaxBackups           int    `json:"max_backups"`
+	LogLevel             string `json:"log_level"`
 }
 
 var db *sql.DB

@@ -151,6 +151,7 @@ Si ya tienes un sistema de autenticación, puedes:
 | `trust_proxy_headers` | Usar `X-Forwarded-For`/`X-Real-IP` para el rate limiting en vez de la IP de conexión | `false` |
 | `backup_interval_hours` | Horas entre backups automáticos de la base de datos | `120` (5 días) |
 | `max_backups` | Cuántos backups conservar antes de podar los más viejos (0 = nunca podar) | `0` |
+| `log_level` | Verbosidad del log: `debug`, `info`, `warn` o `error` | `info` |
 
 > [!WARNING]
 > Solo activa `trust_proxy_headers` si el servidor **únicamente** recibe tráfico a través de tu reverse proxy (nginx/Apache/Caddy) y este siempre sobrescribe esos headers. Si el puerto de Linux Forum queda accesible directamente además del proxy, cualquiera puede falsificar `X-Forwarded-For` para saltarse el rate limiting o hacer que se banee la IP de otra persona. Con la configuración por defecto (`false`), el rate limiting se basa en la IP con la que el proxy se conecta a Linux Forum — si corres detrás de un proxy sin activar esta opción, todo el tráfico del sitio comparte un mismo cupo.
@@ -192,13 +193,26 @@ Para habilitar la recuperación de contraseña por correo, crea el archivo `noUp
   - Se limpian automáticamente cada 30 minutos
 - No se revela si un correo está registrado o no (previene enumeración de cuentas)
 
+## Logging
+
+Toda la salida pasa por [`log/slog`](https://pkg.go.dev/log/slog) de la librería estándar (nada de dependencias nuevas), en texto plano con nivel y timestamp por línea, por ejemplo:
+
+```
+time=2026-07-16T18:30:00.000-06:00 level=INFO msg="Servidor corriendo" addr=http://localhost:8080
+time=2026-07-16T18:30:05.123-06:00 level=ERROR msg="No se pudo enviar el correo de reset de contraseña" err="..."
+```
+
+- `log_level` en `config.json` controla la verbosidad (`debug`/`info`/`warn`/`error`, default `info`)
+- Se escribe a stdout — con `systemd`, `journalctl -u linuxforum` ya lo captura y lo deja filtrable por fecha/nivel sin configuración extra
+- No hay envío a un servicio externo (Sentry, etc.) ni rotación de archivos propia — si necesitás eso, se resuelve a nivel de infraestructura (systemd/journald ya rota, o redirigí stdout a tu colector de logs preferido)
+
 ## Backups
 
-Desde que arranca, Linux Forum guarda automáticamente una copia de la base de datos cada `backup_interval_hours` horas (5 días por defecto) en `db/backups/forum-YYYYMMDD-HHMMSS.db`, y deja constancia en la salida estándar (`Backup de la base de datos creado: ... - <fecha>`).
+Desde que arranca, Linux Forum guarda automáticamente una copia de la base de datos cada `backup_interval_hours` horas (5 días por defecto) en `db/backups/forum-YYYYMMDD-HHMMSS.db`, y deja constancia en el log (`Backup de la base de datos creado`).
 
 - Usa `VACUUM INTO`, que genera una copia consistente aunque el servidor siga leyendo y escribiendo al mismo tiempo — a diferencia de copiar el archivo `.db` a mano, no se arriesga a perderse cambios que todavía están solo en el WAL (`forum.db-wal`)
 - El conteo de horas arranca de nuevo en cada reinicio del proceso (igual que el resto de las tareas periódicas de este proyecto); no se persiste "cuándo tocaría el próximo backup"
-- **Poda automática opcional** — con `max_backups` en `config.json` (0 = nunca podar, el default), tras cada backup exitoso se conservan solo los `max_backups` más recientes y se borran los demás, registrando cada eliminación por stdout
+- **Poda automática opcional** — con `max_backups` en `config.json` (0 = nunca podar, el default), tras cada backup exitoso se conservan solo los `max_backups` más recientes y se borran los demás, registrando cada eliminación en el log
 - Para probar sin esperar días, bajá `backup_interval_hours` a `1` (o menos, en un entorno de prueba) y reiniciá el servidor
 
 ## Estructura del proyecto
@@ -222,6 +236,7 @@ linuxforum/
 │   ├── markdown.go      # Render de Markdown (goldmark) y sanitización (bluemonday)
 │   ├── uploads.go       # Subida/validación/limpieza de imágenes
 │   ├── backup.go        # Backups periódicos de la base de datos (VACUUM INTO)
+│   ├── logging.go       # Configuración de log/slog (nivel dinámico)
 │   └── mail.go          # SMTP y flujos de activación/reset/eliminación por correo
 └── web/
     ├── head.html            # Template <head> compartido

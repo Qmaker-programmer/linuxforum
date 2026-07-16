@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -51,12 +52,12 @@ func loadConfig() {
 
 	f, err := os.Open("config.json")
 	if err != nil {
-		fmt.Println("Error al cargar config.json, usando valores por defecto:", err)
+		slog.Warn("No se pudo cargar config.json, usando valores por defecto", "err", err)
 		return
 	}
 	defer f.Close()
 	if err := json.NewDecoder(f).Decode(&config); err != nil {
-		fmt.Println("Error al decodificar config.json, usando valores por defecto:", err)
+		slog.Warn("No se pudo decodificar config.json, usando valores por defecto", "err", err)
 		return
 	}
 	if config.RateLimit <= 0 {
@@ -212,15 +213,17 @@ func cleanupExpiredSessions() {
 }
 
 func main() {
+	initLogger()
 	loadConfig()
+	applyLogLevel(config.LogLevel)
 	loadMailConfig()
 	initDB()
 	if err := ensureUploadsDir(); err != nil {
-		fmt.Println("Error al crear el directorio de subidas:", err)
+		slog.Error("No se pudo crear el directorio de subidas", "err", err)
 		os.Exit(1)
 	}
 	if err := ensureBackupsDir(); err != nil {
-		fmt.Println("Error al crear el directorio de backups:", err)
+		slog.Error("No se pudo crear el directorio de backups", "err", err)
 		os.Exit(1)
 	}
 
@@ -301,17 +304,17 @@ func main() {
 	serverErr := make(chan error, 1)
 	if config.HTTPS {
 		if _, err := os.Stat(config.CertFile); os.IsNotExist(err) {
-			fmt.Println("Error: No se encuentra", config.CertFile, ". Genera un certificado SSL.")
+			slog.Error("No se encuentra el certificado SSL. Genera uno.", "cert_file", config.CertFile)
 			os.Exit(1)
 		}
 		if _, err := os.Stat(config.KeyFile); os.IsNotExist(err) {
-			fmt.Println("Error: No se encuentra", config.KeyFile, ". Genera un certificado SSL.")
+			slog.Error("No se encuentra la llave SSL. Genera una.", "key_file", config.KeyFile)
 			os.Exit(1)
 		}
-		fmt.Println("Servidor corriendo con HTTPS en https://localhost" + addr)
+		slog.Info("Servidor corriendo con HTTPS", "addr", "https://localhost"+addr)
 		go func() { serverErr <- server.ListenAndServeTLS(config.CertFile, config.KeyFile) }()
 	} else {
-		fmt.Println("Servidor corriendo en http://localhost" + addr)
+		slog.Info("Servidor corriendo", "addr", "http://localhost"+addr)
 		go func() { serverErr <- server.ListenAndServe() }()
 	}
 
@@ -321,14 +324,14 @@ func main() {
 	select {
 	case err := <-serverErr:
 		if err != nil && err != http.ErrServerClosed {
-			fmt.Println("Error del servidor:", err)
+			slog.Error("Error del servidor", "err", err)
 		}
 	case <-stop:
-		fmt.Println("Apagando servidor...")
+		slog.Info("Apagando servidor...")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := server.Shutdown(ctx); err != nil {
-			fmt.Println("Error al apagar el servidor:", err)
+			slog.Error("Error al apagar el servidor", "err", err)
 		}
 	}
 
