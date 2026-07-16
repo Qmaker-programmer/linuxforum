@@ -79,6 +79,17 @@
             font-size: 0.85em;
         }
 
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .pagination a {
+            text-decoration: none;
+        }
+
         /* Ajuste responsivo */
         @media (max-width: 600px) {
             .filter-bar {
@@ -132,6 +143,14 @@
             {{end}}
             </ul>
         </div>
+
+        {{if gt .TotalPages 1}}
+        <div class="pagination">
+            {{if gt .Page 1}}<a href="/?page={{sub .Page 1}}">&laquo; Anterior</a>{{end}}
+            <span>Página {{.Page}} de {{.TotalPages}}</span>
+            {{if lt .Page .TotalPages}}<a href="/?page={{add .Page 1}}">Siguiente &raquo;</a>{{end}}
+        </div>
+        {{end}}
 
     </div>
 

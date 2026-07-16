@@ -7,14 +7,19 @@ Linux Forum es un sistema de foros ligero, rápido y fácil de integrar en cualq
 ## Características
 
 - **Publicaciones** — Creación, visualización, eliminación (solo autor, con confirmación del título) y filtrado por fecha/título
+- **Markdown** — Posts y comentarios se redactan en Markdown (GFM) y se renderizan sanitizados; hay previsualización antes de publicar
+- **Imágenes** — Se pueden insertar imágenes (PNG/JPEG/GIF/WEBP, hasta 5 MB) al redactar un post o comentario; el tipo real del archivo se valida por contenido, no por extensión
+- **Borradores** — Tanto de posts como de comentarios: se guardan, se listan por separado en `/drafts` y se retoman más tarde sin perder lo escrito
+- **Paginación** — Los listados de posts (inicio, filtrado, búsqueda) se paginan de a 20
 - **Filtrado** — Ordenar posts por fecha (asc/desc) o título (A-Z / Z-A) desde la página principal y desde los resultados de búsqueda
 - **Comentarios anidados** — Respuestas en árbol con profundidad arbitraria
 - **Podado inteligente** — Al eliminar un comentario, si todo su subárbol está muerto (solo `[eliminado]`), se elimina por completo, incluyendo ancestros muertos
-- **Autenticación** — Registro e inicio de sesión con contraseñas hasheadas (bcrypt, coste por defecto)
-- **Sesiones** — Cookie configurable con soporte de expiración y limpieza automática de sesiones vencidas
+- **Autenticación** — Registro e inicio de sesión con contraseñas hasheadas (bcrypt); con correo configurado, el registro requiere activación por email
+- **Sesiones** — Persistidas en SQLite, cookie configurable con soporte de expiración y limpieza automática de sesiones vencidas
 - **Guardado de posts** — Marca posts como favoritos (solo visibles para el usuario)
 - **Búsquedas** — Búsqueda de publicaciones por título, búsqueda de usuarios por nombre (coincidencia parcial), búsqueda en comentarios
-- **Perfiles** — Perfil de usuario con descripción editable y cambio de nombre de usuario
+- **Perfiles** — Perfil de usuario con descripción editable, correo y cambio de nombre de usuario
+- **Recuperación de cuenta por correo** — Reset de contraseña y eliminación de cuenta/post vía enlace de confirmación (si hay correo configurado)
 - **Rate limiting** — Configurable por JSON: máximo de requests por ventana de tiempo
 - **HTTPS** — Soporte nativo configurable vía JSON
 - **Todo en backend** — Sin JavaScript, solo formularios HTML y redirecciones del servidor
@@ -25,7 +30,7 @@ Linux Forum es un sistema de foros ligero, rápido y fácil de integrar en cualq
 ## Stack
 
 - **Lenguaje:** Go 1.25+
-- **Dependencias:** `golang.org/x/crypto` (bcrypt) y `github.com/mattn/go-sqlite3`
+- **Dependencias:** `golang.org/x/crypto` (bcrypt), `github.com/mattn/go-sqlite3`, `github.com/yuin/goldmark` (Markdown) y `github.com/microcosm-cc/bluemonday` (sanitización de HTML)
 - **Frontend:** HTML templates (`html/template`), CSS plano (`style.css`) sin JavaScript ni frameworks
 - **Base de datos:** SQLite con WAL mode
 
@@ -191,48 +196,72 @@ linuxforum/
 │   ├── main.go          # Entry point, configuración, rate limiting
 │   ├── types.go         # Structs y variables globales
 │   ├── db.go            # Operaciones de base de datos
-│   ├── templates.go     # Renderizado de templates y helpers
-│   └── handlers.go      # Todos los HTTP handlers
+│   ├── templates.go     # Renderizado de templates, paginación y helpers
+│   ├── handlers.go      # Todos los HTTP handlers
+│   ├── markdown.go      # Render de Markdown (goldmark) y sanitización (bluemonday)
+│   ├── uploads.go       # Subida/validación/limpieza de imágenes
+│   └── mail.go          # SMTP y flujos de activación/reset/eliminación por correo
 └── web/
-    ├── head.html        # Template <head> compartido
-    ├── upbar.html       # Barra superior de navegación
-    ├── index.html       # Página principal (lista de posts + filtros)
-    ├── filtered.html    # Resultados de filtrado
-    ├── post.html        # Vista de post + comentarios
-    ├── search.html      # Resultados de búsqueda + filtros
-    ├── user.html        # Perfil de usuario
-    ├── login.html       # Inicio de sesión / registro
-    ├── public.html      # Formulario de nuevo post
-    ├── confirm.html     # Confirmación de eliminación de post
-    ├── style.css        # Estilos visuales
-    └── tux.png          # Mascota Tux
+    ├── head.html            # Template <head> compartido
+    ├── upbar.html           # Barra superior de navegación
+    ├── index.html           # Página principal (lista de posts + filtros + paginación)
+    ├── filtered.html        # Resultados de filtrado (paginados)
+    ├── post.html            # Vista de post + comentarios
+    ├── search.html          # Resultados de búsqueda + filtros (paginados)
+    ├── user.html            # Perfil de usuario
+    ├── login.html           # Inicio de sesión / registro
+    ├── public.html          # Formulario de nuevo post
+    ├── edit_post.html       # Editor de post (Markdown, imágenes, borrador)
+    ├── post_preview.html    # Previsualización de post antes de publicar
+    ├── comment.html         # Editor de comentario (Markdown, imágenes, borrador)
+    ├── comment_preview.html # Previsualización de comentario antes de publicar
+    ├── drafts.html          # Borradores de posts y de comentarios (dos columnas)
+    ├── confirm.html         # Confirmación de eliminación de post
+    ├── confirm-post-deletion.html  # Confirmación de eliminación de post por correo
+    ├── confirm-deletion.html      # Confirmación de eliminación de cuenta por correo
+    ├── forgot.html          # Solicitud de recuperación de contraseña
+    ├── reset.html           # Formulario de cambio de contraseña
+    ├── style.css            # Estilos visuales
+    ├── uploads/             # Imágenes subidas por los usuarios (gitignored)
+    └── tux.png              # Mascota Tux
 ```
 
 ## Rutas de la API
 
-| Método | Ruta              | Descripción                               | Autenticación |
-|--------|-------------------|-------------------------------------------|---------------|
-| GET    | `/`               | Lista todas las publicaciones             | No            |
-| GET    | `/filtered`       | Lista publicaciones ordenadas             | No            |
-| GET    | `/view?id=N`      | Ver un post y sus comentarios             | No            |
-| GET    | `/search?query=X` | Buscar posts por título                   | No            |
-| GET    | `/search?user=X`  | Buscar usuarios por nombre                | No            |
-| GET    | `/user?u=X`       | Ver perfil de usuario                     | No            |
-| GET    | `/confirm?id=N`   | Página de confirmación para eliminar post | No*           |
-| POST   | `/post`           | Crear nueva publicación                   | Sí            |
-| POST   | `/comment`        | Agregar comentario                        | Sí            |
-| POST   | `/delete-comment` | Eliminar comentario (solo autor)          | Sí            |
-| POST   | `/confirm`        | Ejecutar eliminación de post (solo autor) | Sí            |
-| POST   | `/auth`           | Iniciar sesión / registrar cuenta         | No            |
-| GET    | `/theme?mode=X`   | Cambiar modo oscuro/claro vía cookie      | No            |
-| GET    | `/logout`         | Cerrar sesión                             | No            |
-| POST   | `/profile`        | Editar perfil (nombre, descripción)       | Sí            |
-| POST   | `/save`           | Guardar post como favorito                | Sí            |
-| POST   | `/unsave`         | Quitar post de favoritos                  | Sí            |
-| GET    | `/forgot`         | Formulario de recuperación de contraseña  | No            |
-| POST   | `/forgot`         | Enviar enlace de recuperación por correo  | No            |
-| GET    | `/reset?token=X`  | Formulario para cambiar contraseña        | No (token)    |
-| POST   | `/reset`          | Ejecutar cambio de contraseña             | No (token)    |
+| Método | Ruta                       | Descripción                                            | Autenticación |
+|--------|----------------------------|---------------------------------------------------------|---------------|
+| GET    | `/?page=N`                 | Lista publicaciones (paginado, 20 por página)            | No            |
+| GET    | `/filtered?page=N`         | Lista publicaciones ordenadas (paginado)                 | No            |
+| GET    | `/view?id=N`               | Ver un post y sus comentarios                            | No            |
+| GET    | `/search?query=X&page=N`   | Buscar posts por título (paginado)                       | No            |
+| GET    | `/search?user=X`           | Buscar usuarios por nombre                               | No            |
+| GET    | `/user?u=X`                | Ver perfil de usuario                                    | No            |
+| GET    | `/confirm?id=N`            | Página de confirmación para eliminar post                | No*           |
+| POST   | `/post`                    | Crear post, previsualizar, insertar imagen o editar      | Sí            |
+| GET    | `/post-form`                | Formulario de nuevo post (o retomar un borrador)         | Sí            |
+| POST   | `/draft`                   | Guardar borrador de post                                 | Sí            |
+| GET    | `/drafts`                  | Listar borradores de posts y de comentarios              | Sí            |
+| POST   | `/draft-delete`            | Eliminar borrador de post                                | Sí            |
+| POST   | `/comment`                 | Agregar comentario, previsualizar, insertar imagen o editar | Sí         |
+| GET    | `/comment-form`             | Formulario de comentario (o retomar un borrador)         | Sí            |
+| POST   | `/comment-draft`           | Guardar borrador de comentario                           | Sí            |
+| POST   | `/comment-draft-delete`    | Eliminar borrador de comentario                          | Sí            |
+| POST   | `/delete-comment`          | Eliminar comentario (solo autor)                         | Sí            |
+| POST   | `/confirm`                 | Ejecutar eliminación de post (solo autor)                | Sí            |
+| POST   | `/auth`                    | Iniciar sesión / registrar cuenta                        | No            |
+| GET    | `/activate?token=X`        | Activar cuenta tras registro por correo                  | No (token)    |
+| GET    | `/theme?mode=X`            | Cambiar modo oscuro/claro vía cookie                     | No            |
+| GET    | `/logout`                  | Cerrar sesión                                            | No            |
+| POST   | `/profile`                 | Editar perfil (nombre, descripción, correo)              | Sí            |
+| POST   | `/save`                    | Guardar post como favorito                               | Sí            |
+| POST   | `/unsave`                  | Quitar post de favoritos                                 | Sí            |
+| GET    | `/forgot`                  | Formulario de recuperación de contraseña                 | No            |
+| POST   | `/forgot`                  | Enviar enlace de recuperación por correo                 | No            |
+| GET    | `/reset?token=X`           | Formulario para cambiar contraseña                       | No (token)    |
+| POST   | `/reset`                   | Ejecutar cambio de contraseña                            | No (token)    |
+| POST   | `/request-delete`          | Solicitar eliminación de cuenta por correo               | Sí            |
+| GET    | `/confirm-deletion?token=X`| Confirmar eliminación de cuenta                          | No (token)    |
+| GET    | `/confirm-post-deletion?token=X` | Confirmar eliminación de post por correo           | No (token)    |
 
 \* La confirmación requiere autenticación para ejecutar la eliminación.
 
@@ -240,25 +269,51 @@ linuxforum/
 
 ### Post
 
-| Campo   | Tipo   | Descripción               |
-|---------|--------|---------------------------|
-| ID      | int    | Identificador único       |
-| Title   | string | Título de la publicación  |
-| User    | string | Nombre del autor          |
-| Message | string | Contenido del post        |
-| Time    | string | Fecha y hora de publicación (YYYY-MM-DD HH:MM) |
+| Campo    | Tipo         | Descripción               |
+|----------|--------------|---------------------------|
+| ID       | int          | Identificador único       |
+| Title    | string       | Título de la publicación  |
+| User     | string       | Nombre del autor          |
+| Message  | string       | Contenido en Markdown crudo |
+| Markdown | template.HTML| Contenido ya renderizado y sanitizado |
+| Time     | string       | Fecha y hora de publicación (YYYY-MM-DD HH:MM) |
 
 ### Comment
 
-| Campo    | Tipo   | Descripción                              |
-|----------|--------|------------------------------------------|
-| ID       | int    | Identificador único                      |
-| PostID   | int    | ID del post al que pertenece             |
-| ParentID | int    | ID del comentario padre (0 = raíz)       |
-| User     | string | Nombre del autor                         |
-| Message  | string | Contenido (o `[eliminado]` si borrado)   |
-| Time     | string | Fecha y hora de publicación (YYYY-MM-DD HH:MM) |
-| Deleted  | bool   | Indica si el comentario fue eliminado    |
+| Campo    | Tipo         | Descripción                              |
+|----------|--------------|------------------------------------------|
+| ID       | int          | Identificador único                      |
+| PostID   | int          | ID del post al que pertenece             |
+| ParentID | int          | ID del comentario padre (0 = raíz)       |
+| User     | string       | Nombre del autor                         |
+| Message  | string       | Contenido en Markdown (o `[eliminado]` si borrado) |
+| Markdown | template.HTML| Contenido ya renderizado y sanitizado    |
+| Time     | string       | Fecha y hora de publicación (YYYY-MM-DD HH:MM) |
+| Deleted  | bool         | Indica si el comentario fue eliminado    |
+
+### Draft (borrador de post)
+
+| Campo     | Tipo   | Descripción                    |
+|-----------|--------|---------------------------------|
+| ID        | int    | Identificador único             |
+| Username  | string | Dueño del borrador               |
+| Title     | string | Título en progreso               |
+| Message   | string | Contenido en progreso (Markdown) |
+| CreatedAt | string | Fecha de creación                |
+| UpdatedAt | string | Fecha de última edición          |
+
+### CommentDraft (borrador de comentario)
+
+| Campo     | Tipo   | Descripción                                  |
+|-----------|--------|------------------------------------------------|
+| ID        | int    | Identificador único                             |
+| Username  | string | Dueño del borrador                              |
+| PostID    | int    | Post al que respondería el comentario           |
+| ParentID  | int    | Comentario padre (0 = raíz)                     |
+| Message   | string | Contenido en progreso (Markdown)                |
+| PostTitle | string | Título del post (para mostrarlo en `/drafts`; vacío si el post ya no existe) |
+| CreatedAt | string | Fecha de creación                               |
+| UpdatedAt | string | Fecha de última edición                         |
 
 ### User
 
@@ -267,6 +322,7 @@ linuxforum/
 | Username    | string | Nombre de usuario (clave en el mapa) |
 | Password    | string | Hash bcrypt de la contraseña         |
 | Description | string | Descripción del perfil               |
+| Email       | string | Correo del usuario (opcional)        |
 | SavedPostIDs| []int  | IDs de posts guardados como favoritos |
 
 ## Seguridad
@@ -279,6 +335,9 @@ linuxforum/
 - **Rate limiting** — Configurable vía `config.json` para evitar abusos
 - **HTTPS** — Soporte nativo configurable vía `config.json`
 - **SQLite** — Base de datos embebida con WAL mode para mejor concurrencia
+- **Markdown sanitizado** — Se renderiza con goldmark y se sanitiza con bluemonday antes de guardarse como HTML
+- **Imágenes validadas por contenido** — El tipo de archivo se determina inspeccionando los bytes reales (no la extensión ni el `Content-Type` del cliente); se limita a 5 MB y a PNG/JPEG/GIF/WEBP (sin SVG, para evitar XSS)
+- **Limpieza de huérfanos** — Al eliminar un borrador, comentario, post o cuenta, las imágenes subidas y los borradores asociados se eliminan también, no quedan archivos ni filas huérfanas
 
 ## Podado de comentarios
 

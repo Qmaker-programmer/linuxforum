@@ -250,6 +250,39 @@ func getCommentsForPost(postID int) []Comment {
 	return result
 }
 
+func collectMessageImages(query string, args ...any) []string {
+	var paths []string
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return paths
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var message string
+		if rows.Scan(&message) == nil {
+			paths = append(paths, extractUploadedImagePaths(message)...)
+		}
+	}
+	return paths
+}
+
+// deletePostCascade removes a post along with everything that references
+// it (comments, saved-post bookmarks, pending comment drafts) and cleans
+// up any uploaded images from all of their messages.
+func deletePostCascade(postID int, postMessage string) {
+	var imagePaths []string
+	imagePaths = append(imagePaths, extractUploadedImagePaths(postMessage)...)
+	imagePaths = append(imagePaths, collectMessageImages("SELECT message FROM comments WHERE post_id = ?", postID)...)
+	imagePaths = append(imagePaths, collectMessageImages("SELECT message FROM comment_drafts WHERE post_id = ?", postID)...)
+
+	db.Exec("DELETE FROM comments WHERE post_id = ?", postID)
+	db.Exec("DELETE FROM saved_posts WHERE post_id = ?", postID)
+	db.Exec("DELETE FROM comment_drafts WHERE post_id = ?", postID)
+	db.Exec("DELETE FROM posts WHERE id = ?", postID)
+
+	deleteUploadedImages(imagePaths)
+}
+
 func getUserPosts(username string) []Post {
 	rows, err := db.Query("SELECT id, title, user, message, markdown, created_at FROM posts WHERE user = ? ORDER BY created_at DESC", username)
 	if err != nil {
@@ -325,6 +358,7 @@ func saveDraft(draftID int, username, title, message string) (int, error) {
 			if _, err := db.Exec("UPDATE post_drafts SET title = ?, message = ?, updated_at = ? WHERE id = ?", title, message, now, draftID); err != nil {
 				return 0, err
 			}
+			deleteUploadedImages(diffRemovedImages(existing.Message, message))
 			return draftID, nil
 		}
 	}
@@ -381,6 +415,7 @@ func saveCommentDraft(draftID int, username string, postID, parentID int, messag
 			if _, err := db.Exec("UPDATE comment_drafts SET post_id = ?, parent_id = ?, message = ?, updated_at = ? WHERE id = ?", postID, parentID, message, now, draftID); err != nil {
 				return 0, err
 			}
+			deleteUploadedImages(diffRemovedImages(existing.Message, message))
 			return draftID, nil
 		}
 	}
@@ -658,6 +693,26 @@ func cleanupExpiredPendingPostDeletions() {
 }
 
 func deleteUserAccount(username string) error {
+	var imagePaths []string
+	imagePaths = append(imagePaths, collectMessageImages("SELECT message FROM posts WHERE user = ?", username)...)
+	imagePaths = append(imagePaths, collectMessageImages("SELECT message FROM comments WHERE user = ? AND deleted = 0", username)...)
+	imagePaths = append(imagePaths, collectMessageImages("SELECT message FROM post_drafts WHERE username = ?", username)...)
+	imagePaths = append(imagePaths, collectMessageImages("SELECT message FROM comment_drafts WHERE username = ?", username)...)
+
+	var postIDs []int
+	if rows, err := db.Query("SELECT id FROM posts WHERE user = ?", username); err == nil {
+		for rows.Next() {
+			var id int
+			if rows.Scan(&id) == nil {
+				postIDs = append(postIDs, id)
+			}
+		}
+		rows.Close()
+	}
+	for _, id := range postIDs {
+		imagePaths = append(imagePaths, collectMessageImages("SELECT message FROM comment_drafts WHERE post_id = ?", id)...)
+	}
+
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -666,14 +721,24 @@ func deleteUserAccount(username string) error {
 
 	tx.Exec("DELETE FROM saved_posts WHERE username = ?", username)
 	tx.Exec("UPDATE comments SET deleted = 1, message = '[eliminado]' WHERE user = ?", username)
+	for _, id := range postIDs {
+		tx.Exec("DELETE FROM comment_drafts WHERE post_id = ?", id)
+	}
 	tx.Exec("DELETE FROM posts WHERE user = ?", username)
 	tx.Exec("DELETE FROM password_resets WHERE username = ?", username)
 	tx.Exec("DELETE FROM pending_activations WHERE username = ?", username)
 	tx.Exec("DELETE FROM pending_deletions WHERE username = ?", username)
+	tx.Exec("DELETE FROM post_drafts WHERE username = ?", username)
+	tx.Exec("DELETE FROM comment_drafts WHERE username = ?", username)
 	tx.Exec("DELETE FROM sessions WHERE username = ?", username)
 	tx.Exec("DELETE FROM users WHERE username = ?", username)
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	deleteUploadedImages(imagePaths)
+	return nil
 }
 
 func saveSession(token string, session Session) error {

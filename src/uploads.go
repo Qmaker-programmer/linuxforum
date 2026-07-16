@@ -23,6 +23,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 )
 
 const (
@@ -88,4 +90,40 @@ func saveUploadedImage(r *http.Request, field string) (string, error) {
 	}
 
 	return "/web/uploads/" + filename, nil
+}
+
+var uploadedImagePattern = regexp.MustCompile(`/web/uploads/[a-f0-9]{32}\.(?:png|jpg|gif|webp)`)
+
+// extractUploadedImagePaths finds every uploaded-image URL referenced in a
+// message's raw Markdown source. It matches on the URL pattern directly
+// rather than parsing Markdown, since that's all that's needed to find
+// files to clean up.
+func extractUploadedImagePaths(message string) []string {
+	return uploadedImagePattern.FindAllString(message, -1)
+}
+
+// diffRemovedImages returns the uploaded images referenced in oldMessage
+// that are no longer referenced in newMessage, so they can be cleaned up
+// when a draft is edited to remove an image.
+func diffRemovedImages(oldMessage, newMessage string) []string {
+	stillPresent := make(map[string]bool)
+	for _, p := range extractUploadedImagePaths(newMessage) {
+		stillPresent[p] = true
+	}
+	var removed []string
+	for _, p := range extractUploadedImagePaths(oldMessage) {
+		if !stillPresent[p] {
+			removed = append(removed, p)
+		}
+	}
+	return removed
+}
+
+// deleteUploadedImages removes uploaded image files from disk on a
+// best-effort basis. Paths come from uploadedImagePattern matches only,
+// so there's no path traversal risk.
+func deleteUploadedImages(paths []string) {
+	for _, p := range paths {
+		os.Remove(strings.TrimPrefix(p, "/"))
+	}
 }

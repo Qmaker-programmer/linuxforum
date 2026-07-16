@@ -309,9 +309,11 @@ func handleConfirmPostDeletion(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		db.Exec("DELETE FROM comments WHERE post_id = ?", ppd.PostID)
-		db.Exec("DELETE FROM saved_posts WHERE post_id = ?", ppd.PostID)
-		db.Exec("DELETE FROM posts WHERE id = ?", ppd.PostID)
+		postMessage := ""
+		if post := getPostByID(ppd.PostID); post != nil {
+			postMessage = post.Message
+		}
+		deletePostCascade(ppd.PostID, postMessage)
 		deletePendingPostDeletion(ppd.PostID)
 
 		http.Redirect(w, r, "/", http.StatusSeeOther)

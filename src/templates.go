@@ -33,6 +33,7 @@ const (
 	maxMessageLength     = 10000
 	maxDescriptionLength = 2000
 	maxUsernameLength    = 50
+	postsPerPage         = 20
 )
 
 func renderPage(w http.ResponseWriter, r *http.Request, pageFile string, data any) {
@@ -40,6 +41,8 @@ func renderPage(w http.ResponseWriter, r *http.Request, pageFile string, data an
 	funcMap := template.FuncMap{
 		"backLabel": func() string { return backLabel },
 		"backURL":   func() string { return backURL },
+		"add":       func(a, b int) int { return a + b },
+		"sub":       func(a, b int) int { return a - b },
 	}
 	tmpl, err := template.New(filepath.Base(pageFile)).Funcs(funcMap).ParseFiles("web/head.html", "web/upbar.html", pageFile)
 	if err != nil {
@@ -318,4 +321,39 @@ func normalizeSortParams(sortBy, order string) (string, string) {
 		order = "desc"
 	}
 	return sortBy, order
+}
+
+func parsePage(r *http.Request) int {
+	page, err := strconv.Atoi(r.URL.Query().Get("page"))
+	if err != nil || page < 1 {
+		return 1
+	}
+	return page
+}
+
+// paginatePosts slices posts into the requested page, clamping page into
+// range instead of returning an empty page when it's out of bounds.
+func paginatePosts(posts []Post, page int) (pageItems []Post, clampedPage, totalPages int) {
+	total := len(posts)
+	totalPages = (total + postsPerPage - 1) / postsPerPage
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	clampedPage = page
+	if clampedPage < 1 {
+		clampedPage = 1
+	}
+	if clampedPage > totalPages {
+		clampedPage = totalPages
+	}
+
+	start := (clampedPage - 1) * postsPerPage
+	if start > total {
+		start = total
+	}
+	end := start + postsPerPage
+	if end > total {
+		end = total
+	}
+	return posts[start:end], clampedPage, totalPages
 }

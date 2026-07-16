@@ -17,10 +17,12 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -613,5 +615,113 @@ func TestLogout(t *testing.T) {
 				t.Error("expected session cookie to be cleared")
 			}
 		}
+	}
+}
+
+func TestCommentDraftSaveThenPublish(t *testing.T) {
+	setupTest(t)
+	db.Exec("INSERT INTO posts (title, user, message, created_at) VALUES (?, ?, ?, ?)", "Draftable", "testuser", "Body", "2025-01-01 12:00")
+
+	form := url.Values{"post_id": {"1"}, "parent_id": {"0"}, "message": {"borrador de comentario"}, "csrf_token": {"test-csrf-token"}, "draft_id": {"0"}}
+	req := httptest.NewRequest(http.MethodPost, "/comment-draft", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginUser(t, req)
+	w := httptest.NewRecorder()
+	handleCommentDraftSave(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303, got %d", w.Code)
+	}
+
+	drafts := getUserCommentDrafts("testuser")
+	if len(drafts) != 1 {
+		t.Fatalf("expected 1 comment draft, got %d", len(drafts))
+	}
+
+	form2 := url.Values{"post_id": {"1"}, "parent_id": {"0"}, "message": {"borrador de comentario"}, "csrf_token": {"test-csrf-token"}, "draft_id": {strconv.Itoa(drafts[0].ID)}, "action": {"send"}}
+	req2 := httptest.NewRequest(http.MethodPost, "/comment", strings.NewReader(form2.Encode()))
+	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginUser(t, req2)
+	w2 := httptest.NewRecorder()
+	handleComment(w2, req2)
+
+	if w2.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303, got %d", w2.Code)
+	}
+
+	if len(getUserCommentDrafts("testuser")) != 0 {
+		t.Error("expected comment draft to be gone after publishing")
+	}
+}
+
+func TestCommentDraftDelete(t *testing.T) {
+	setupTest(t)
+	db.Exec("INSERT INTO posts (title, user, message, created_at) VALUES (?, ?, ?, ?)", "Draftable", "testuser", "Body", "2025-01-01 12:00")
+
+	draftID, err := saveCommentDraft(0, "testuser", 1, 0, "borrador")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	form := url.Values{"draft_id": {strconv.Itoa(draftID)}, "csrf_token": {"test-csrf-token"}}
+	req := httptest.NewRequest(http.MethodPost, "/comment-draft-delete", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginUser(t, req)
+	w := httptest.NewRecorder()
+	handleCommentDraftDelete(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("expected 303, got %d", w.Code)
+	}
+	if getCommentDraftByID(draftID) != nil {
+		t.Error("expected comment draft to be deleted")
+	}
+}
+
+func TestDeleteAccountRemovesDrafts(t *testing.T) {
+	setupTest(t)
+	db.Exec("INSERT INTO posts (title, user, message, created_at) VALUES (?, ?, ?, ?)", "Post", "testuser", "Body", "2025-01-01 12:00")
+
+	if _, err := saveDraft(0, "testuser", "Borrador", "contenido"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := saveCommentDraft(0, "testuser", 1, 0, "borrador comentario"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := deleteUserAccount("testuser"); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(getUserDrafts("testuser")) != 0 {
+		t.Error("expected post drafts to be removed after account deletion")
+	}
+	if len(getUserCommentDrafts("testuser")) != 0 {
+		t.Error("expected comment drafts to be removed after account deletion")
+	}
+}
+
+func TestHomePagination(t *testing.T) {
+	setupTest(t)
+	for i := 0; i < postsPerPage+3; i++ {
+		db.Exec("INSERT INTO posts (title, user, message, created_at) VALUES (?, ?, ?, ?)",
+			fmt.Sprintf("Post number %d", i), "testuser", "Body", fmt.Sprintf("2025-01-01 %02d:00", i%24))
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	handleHome(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Página 1 de 2") {
+		t.Error("expected pagination info for page 1 of 2")
+	}
+
+	req2 := httptest.NewRequest(http.MethodGet, "/?page=2", nil)
+	w2 := httptest.NewRecorder()
+	handleHome(w2, req2)
+	if !strings.Contains(w2.Body.String(), "Página 2 de 2") {
+		t.Error("expected pagination info for page 2 of 2")
 	}
 }

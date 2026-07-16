@@ -81,16 +81,21 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 	setLastListCookie(w, "Inicio", "/")
 	query, loggedUser := pageContext(r)
 	allPosts := getAllPosts()
+	pagePosts, page, totalPages := paginatePosts(allPosts, parsePage(r))
 	renderPage(w, r, "web/index.html", struct {
 		Posts      []Post
 		Query      string
 		LoggedUser string
 		Theme      string
+		Page       int
+		TotalPages int
 	}{
-		Posts:      allPosts,
+		Posts:      pagePosts,
 		Query:      query,
 		LoggedUser: loggedUser,
 		Theme:      getTheme(r),
+		Page:       page,
+		TotalPages: totalPages,
 	})
 }
 
@@ -101,6 +106,7 @@ func handleFiltered(w http.ResponseWriter, r *http.Request) {
 	query, loggedUser := pageContext(r)
 	allPosts := getAllPosts()
 	sorted := sortPosts(allPosts, sortBy, order)
+	pagePosts, page, totalPages := paginatePosts(sorted, parsePage(r))
 	renderPage(w, r, "web/filtered.html", struct {
 		Posts      []Post
 		Query      string
@@ -108,13 +114,17 @@ func handleFiltered(w http.ResponseWriter, r *http.Request) {
 		Theme      string
 		SortBy     string
 		Order      string
+		Page       int
+		TotalPages int
 	}{
-		Posts:      sorted,
+		Posts:      pagePosts,
 		Query:      query,
 		LoggedUser: loggedUser,
 		Theme:      getTheme(r),
 		SortBy:     sortBy,
 		Order:      order,
+		Page:       page,
+		TotalPages: totalPages,
 	})
 }
 
@@ -564,6 +574,9 @@ func handleDraftDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if draft := getDraftByID(draftID); draft != nil && draft.Username == username {
+		deleteUploadedImages(extractUploadedImagePaths(draft.Message))
+	}
 	deleteDraft(draftID, username)
 	http.Redirect(w, r, "/drafts", http.StatusSeeOther)
 }
@@ -643,6 +656,9 @@ func handleCommentDraftDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if draft := getCommentDraftByID(draftID); draft != nil && draft.Username == username {
+		deleteUploadedImages(extractUploadedImagePaths(draft.Message))
+	}
 	deleteCommentDraft(draftID, username)
 	http.Redirect(w, r, "/drafts", http.StatusSeeOther)
 }
@@ -960,6 +976,7 @@ func handleDeleteComment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	postID := comment.PostID
+	deleteUploadedImages(extractUploadedImagePaths(comment.Message))
 	deleteCommentAndPrune(commentID)
 	http.Redirect(w, r, "/view?id="+strconv.Itoa(postID), http.StatusSeeOther)
 }
@@ -995,6 +1012,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 	sortBy, order := normalizeSortParams(r.URL.Query().Get("sort_by"), r.URL.Query().Get("order"))
 
 	matchedPosts = sortPosts(matchedPosts, sortBy, order)
+	pagePosts, page, totalPages := paginatePosts(matchedPosts, parsePage(r))
 
 	_, loggedUser := pageContext(r)
 	theme := getTheme(r)
@@ -1007,15 +1025,19 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 		Theme      string
 		SortBy     string
 		Order      string
+		Page       int
+		TotalPages int
 	}{
 		Query:      searchQuery,
-		Posts:      matchedPosts,
+		Posts:      pagePosts,
 		Users:      matchedUsers,
 		UserQuery:  userQuery,
 		LoggedUser: loggedUser,
 		Theme:      theme,
 		SortBy:     sortBy,
 		Order:      order,
+		Page:       page,
+		TotalPages: totalPages,
 	})
 }
 
@@ -1156,9 +1178,7 @@ func handleConfirm(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		db.Exec("DELETE FROM comments WHERE post_id = ?", post.ID)
-		db.Exec("DELETE FROM saved_posts WHERE post_id = ?", post.ID)
-		db.Exec("DELETE FROM posts WHERE id = ?", post.ID)
+		deletePostCascade(post.ID, post.Message)
 
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
