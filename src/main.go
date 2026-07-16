@@ -143,6 +143,44 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// recordLoginFailure counts a failed login attempt for username and locks
+// it out once it hits maxLoginAttempts. Tracked per-username rather than
+// per-IP: the account being brute-forced is what needs protecting,
+// regardless of how many IPs the attacker spreads attempts across.
+func recordLoginFailure(username string) {
+	loginMu.Lock()
+	defer loginMu.Unlock()
+	loginAttempts[username]++
+	if loginAttempts[username] >= maxLoginAttempts {
+		loginLockedUntil[username] = time.Now().Add(loginLockoutMinutes * time.Minute)
+	}
+}
+
+func clearLoginFailures(username string) {
+	loginMu.Lock()
+	defer loginMu.Unlock()
+	delete(loginAttempts, username)
+	delete(loginLockedUntil, username)
+}
+
+// isLoginLocked reports whether username is currently locked out, and how
+// many minutes remain. It also lazily clears expired lockouts.
+func isLoginLocked(username string) (bool, int) {
+	loginMu.Lock()
+	defer loginMu.Unlock()
+	until, ok := loginLockedUntil[username]
+	if !ok {
+		return false, 0
+	}
+	remaining := time.Until(until)
+	if remaining <= 0 {
+		delete(loginLockedUntil, username)
+		delete(loginAttempts, username)
+		return false, 0
+	}
+	return true, int(remaining.Minutes()) + 1
+}
+
 func resetRequestCounts() {
 	for {
 		time.Sleep(time.Duration(config.ResetMinutes) * time.Minute)

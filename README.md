@@ -29,7 +29,7 @@ Linux Forum es un sistema de foros ligero, rápido y fácil de integrar en cualq
 
 ## Stack
 
-- **Lenguaje:** Go 1.25+
+- **Lenguaje:** Go 1.25.12+ (versión fijada en `go.mod` — trae parches de seguridad de la librería estándar; verificado con `govulncheck`)
 - **Dependencias:** `golang.org/x/crypto` (bcrypt), `github.com/mattn/go-sqlite3`, `github.com/yuin/goldmark` (Markdown) y `github.com/microcosm-cc/bluemonday` (sanitización de HTML)
 - **Frontend:** HTML templates (`html/template`), CSS plano (`style.css`) sin JavaScript ni frameworks
 - **Base de datos:** SQLite con WAL mode
@@ -340,6 +340,8 @@ linuxforum/
 - **Autoría verificada en backend** — Tanto la eliminación de posts como de comentarios verifica que el usuario autenticado sea el autor
 - **Confirmación de título** — Para eliminar un post, el usuario debe escribir el título exacto, evitando eliminaciones accidentales
 - **Sesiones por cookie** — Nombre de cookie configurable, identificador único por sesión, sin exposición de contraseñas. Las sesiones pueden expirar automáticamente
+- **Tokens de sesión hasheados** — Igual que los de reset/activación/eliminación, la base de datos solo guarda el hash SHA-256 del token de sesión, nunca el valor de la cookie en sí; leer la base de datos a solas no alcanza para secuestrar una sesión
+- **Bloqueo por intentos fallidos de login** — Tras 5 intentos fallidos, ese nombre de usuario queda bloqueado 15 minutos (aunque después se use la contraseña correcta), para frenar fuerza bruta
 - **Validación de entrada** — Títulos y mensajes no vacíos, nombres de usuario únicos, etc
 - **Rate limiting** — Configurable vía `config.json` para evitar abusos; por IP de conexión, o por `X-Forwarded-For`/`X-Real-IP` si se activa `trust_proxy_headers` (ver arriba)
 - **HTTPS** — Soporte nativo configurable vía `config.json`

@@ -95,8 +95,15 @@ func generateResetToken() (string, string) {
 		return "", ""
 	}
 	token := hex.EncodeToString(b)
+	return token, hashToken(token)
+}
+
+// hashToken hashes a random token before it's stored or looked up in the
+// database, so that read access to the DB alone (a leaked backup, etc.)
+// never yields a usable token.
+func hashToken(token string) string {
 	hash := sha256.Sum256([]byte(token))
-	return token, hex.EncodeToString(hash[:])
+	return hex.EncodeToString(hash[:])
 }
 
 func sendResetEmail(to, token, baseURL string) error {
@@ -204,8 +211,7 @@ func handleConfirmDeletion(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		hash := sha256.Sum256([]byte(token))
-		tokenHash := hex.EncodeToString(hash[:])
+		tokenHash := hashToken(token)
 		pd := getPendingDeletionByHash(tokenHash)
 		if pd == nil {
 			http.Redirect(w, r, "/web/login.html?login_user_error="+url.QueryEscape("El enlace de eliminación no es válido o ya expiró."), http.StatusSeeOther)
@@ -238,8 +244,7 @@ func handleConfirmDeletion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hash := sha256.Sum256([]byte(token))
-	tokenHash := hex.EncodeToString(hash[:])
+	tokenHash := hashToken(token)
 	pd := getPendingDeletionByHash(tokenHash)
 	if pd == nil {
 		http.Redirect(w, r, "/web/login.html?login_user_error="+url.QueryEscape("El enlace de eliminación no es válido o ya expiró."), http.StatusSeeOther)
@@ -301,8 +306,7 @@ func handleConfirmPostDeletion(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		hash := sha256.Sum256([]byte(token))
-		tokenHash := hex.EncodeToString(hash[:])
+		tokenHash := hashToken(token)
 		ppd := getPendingPostDeletionByHash(tokenHash)
 		if ppd == nil {
 			http.Redirect(w, r, "/?error="+url.QueryEscape("El enlace de eliminación no es válido o ya expiró."), http.StatusSeeOther)
@@ -326,8 +330,7 @@ func handleConfirmPostDeletion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hash := sha256.Sum256([]byte(token))
-	tokenHash := hex.EncodeToString(hash[:])
+	tokenHash := hashToken(token)
 	ppd := getPendingPostDeletionByHash(tokenHash)
 	if ppd == nil {
 		http.Redirect(w, r, "/?error="+url.QueryEscape("El enlace de eliminación no es válido o ya expiró."), http.StatusSeeOther)
@@ -441,8 +444,7 @@ func handleActivate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hash := sha256.Sum256([]byte(token))
-	tokenHash := hex.EncodeToString(hash[:])
+	tokenHash := hashToken(token)
 	pa := getPendingActivationByHash(tokenHash)
 	if pa == nil {
 		http.Redirect(w, r, "/web/login.html?login_user_error="+url.QueryEscape("El enlace de activación no es válido o ya expiró."), http.StatusSeeOther)
@@ -488,8 +490,7 @@ func handleReset(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		hash := sha256.Sum256([]byte(token))
-		tokenHash := hex.EncodeToString(hash[:])
+		tokenHash := hashToken(token)
 		rt := getResetTokenByHash(tokenHash)
 
 		if rt == nil || rt.Used {
@@ -528,8 +529,7 @@ func handleReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hash := sha256.Sum256([]byte(token))
-	tokenHash := hex.EncodeToString(hash[:])
+	tokenHash := hashToken(token)
 	rt := getResetTokenByHash(tokenHash)
 
 	if rt == nil || rt.Used {

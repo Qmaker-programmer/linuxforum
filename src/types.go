@@ -129,5 +129,14 @@ var config Config
 var requestCounts = make(map[string]int)
 var mu sync.Mutex
 
+var loginAttempts = make(map[string]int)
+var loginLockedUntil = make(map[string]time.Time)
+var loginMu sync.Mutex
+
 const searchQueryCookie = "search_query"
 const commentSearchCookie = "comment_search_query"
+
+const (
+	maxLoginAttempts    = 5
+	loginLockoutMinutes = 15
+)

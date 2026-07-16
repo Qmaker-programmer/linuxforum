@@ -246,8 +246,15 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if locked, minutes := isLoginLocked(username); locked {
+			params.Set("login_pass_error", fmt.Sprintf("Demasiados intentos fallidos. Intenta de nuevo en %d minutos.", minutes))
+			redirectToLogin(w, r, params)
+			return
+		}
+
 		user := getUser(username)
 		if user == nil {
+			recordLoginFailure(username)
 			params.Set("login_user_error", "Ese usuario no existe.")
 			redirectToLogin(w, r, params)
 			return
@@ -255,10 +262,13 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 
 		err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 		if err != nil {
+			recordLoginFailure(username)
 			params.Set("login_pass_error", "Contraseña incorrecta.")
 			redirectToLogin(w, r, params)
 			return
 		}
+
+		clearLoginFailures(username)
 
 		sessionToken := generateSessionToken()
 		saveSession(sessionToken, Session{

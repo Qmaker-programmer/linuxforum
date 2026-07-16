@@ -778,3 +778,80 @@ func TestSecurityHeadersMiddleware(t *testing.T) {
 		t.Error("expected a Content-Security-Policy header")
 	}
 }
+
+func TestSessionTokenIsHashedInDB(t *testing.T) {
+	setupTest(t)
+
+	token := "raw-session-token-for-test"
+	if err := saveSession(token, Session{Username: "testuser", CSRFToken: "csrf"}); err != nil {
+		t.Fatal(err)
+	}
+
+	var storedHash string
+	if err := db.QueryRow("SELECT token_hash FROM sessions WHERE username = ?", "testuser").Scan(&storedHash); err != nil {
+		t.Fatal(err)
+	}
+
+	if storedHash == token {
+		t.Error("raw session token must not be stored as-is in the database")
+	}
+	if storedHash != hashToken(token) {
+		t.Error("stored value should be the SHA-256 hash of the token")
+	}
+
+	if s := getSessionByToken(token); s == nil || s.Username != "testuser" {
+		t.Error("expected to look up the session by its raw token via the hash")
+	}
+}
+
+func TestLoginLockoutAfterRepeatedFailures(t *testing.T) {
+	setupTest(t)
+	clearLoginFailures("testuser")
+	defer clearLoginFailures("testuser")
+
+	for i := 0; i < maxLoginAttempts; i++ {
+		form := url.Values{"action": {"login"}, "username": {"testuser"}, "password": {"wrongpass"}}
+		req := httptest.NewRequest(http.MethodPost, "/auth", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		handleAuth(w, req)
+	}
+
+	// Even the correct password should now be rejected while locked out.
+	form := url.Values{"action": {"login"}, "username": {"testuser"}, "password": {"password123"}}
+	req := httptest.NewRequest(http.MethodPost, "/auth", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handleAuth(w, req)
+
+	loc := w.Result().Header.Get("Location")
+	if !strings.Contains(loc, "Demasiados+intentos") {
+		t.Errorf("expected lockout message in redirect, got %s", loc)
+	}
+}
+
+func TestLoginSuccessClearsFailures(t *testing.T) {
+	setupTest(t)
+	clearLoginFailures("testuser")
+	defer clearLoginFailures("testuser")
+
+	form := url.Values{"action": {"login"}, "username": {"testuser"}, "password": {"wrongpass"}}
+	req := httptest.NewRequest(http.MethodPost, "/auth", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handleAuth(w, req)
+
+	form2 := url.Values{"action": {"login"}, "username": {"testuser"}, "password": {"password123"}}
+	req2 := httptest.NewRequest(http.MethodPost, "/auth", strings.NewReader(form2.Encode()))
+	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w2 := httptest.NewRecorder()
+	handleAuth(w2, req2)
+
+	if w2.Code != http.StatusSeeOther || w2.Result().Header.Get("Location") != "/" {
+		t.Errorf("expected successful login after one failure, got code=%d location=%s", w2.Code, w2.Result().Header.Get("Location"))
+	}
+
+	if locked, _ := isLoginLocked("testuser"); locked {
+		t.Error("expected failures to be cleared after a successful login")
+	}
+}

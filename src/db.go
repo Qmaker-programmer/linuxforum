@@ -166,6 +166,21 @@ func runMigrations() {
 				}
 			},
 		},
+		{
+			// Sessions used to store the raw session token as-is. That
+			// means read access to the DB alone (a leaked backup, etc.)
+			// handed over ready-to-use session cookies. Renaming the
+			// column to token_hash invalidates every existing session
+			// (their old values aren't hashes of anything), forcing a
+			// harmless re-login, and all sessions from here on are
+			// looked up by hash instead.
+			Version: 7,
+			Apply: func() {
+				if _, err := db.Exec("ALTER TABLE sessions RENAME COLUMN token TO token_hash"); err != nil {
+					panic(fmt.Sprintf("Migración %d fallida: %v", 7, err))
+				}
+			},
+		},
 	}
 
 	for _, m := range migrations {
@@ -746,13 +761,13 @@ func saveSession(token string, session Session) error {
 	if !session.ExpiresAt.IsZero() {
 		expiresAt = session.ExpiresAt.Format(time.RFC3339)
 	}
-	_, err := db.Exec("INSERT OR REPLACE INTO sessions (token, username, expires_at, csrf_token) VALUES (?, ?, ?, ?)",
-		token, session.Username, expiresAt, session.CSRFToken)
+	_, err := db.Exec("INSERT OR REPLACE INTO sessions (token_hash, username, expires_at, csrf_token) VALUES (?, ?, ?, ?)",
+		hashToken(token), session.Username, expiresAt, session.CSRFToken)
 	return err
 }
 
 func getSessionByToken(token string) *Session {
-	row := db.QueryRow("SELECT username, expires_at, csrf_token FROM sessions WHERE token = ?", token)
+	row := db.QueryRow("SELECT username, expires_at, csrf_token FROM sessions WHERE token_hash = ?", hashToken(token))
 	var username, expiresAtStr, csrfToken string
 	if err := row.Scan(&username, &expiresAtStr, &csrfToken); err != nil {
 		return nil
@@ -765,7 +780,7 @@ func getSessionByToken(token string) *Session {
 }
 
 func deleteSession(token string) error {
-	_, err := db.Exec("DELETE FROM sessions WHERE token = ?", token)
+	_, err := db.Exec("DELETE FROM sessions WHERE token_hash = ?", hashToken(token))
 	return err
 }
 
