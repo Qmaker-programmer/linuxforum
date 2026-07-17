@@ -130,7 +130,7 @@
 
         <div class="editor-box">
             <div class="editor-header">
-                <h3>Nueva publicación</h3>
+                <h3>{{if .EditingPostID}}Editar publicación{{else}}Nueva publicación{{end}}</h3>
             </div>
 
             {{if .Error}}
@@ -140,6 +140,7 @@
             <form action="/post" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 <input type="hidden" name="draft_id" value="{{.DraftID}}">
+                <input type="hidden" name="editing_post_id" value="{{.EditingPostID}}">
 
                 <div class="form-group">
                     <label for="title">Título:</label>
@@ -157,7 +158,7 @@
                 </div>
 
                 <div class="editor-buttons">
-                    <button type="submit" name="action" value="send" class="btn-send">Enviar</button>
+                    <button type="submit" name="action" value="send" class="btn-send">{{if .EditingPostID}}Guardar cambios{{else}}Enviar{{end}}</button>
                     <button type="submit" name="action" value="preview" class="btn-preview">Previsualizar</button>
                     <button type="submit" formaction="/draft" class="btn-draft">Guardar borrador</button>
                 </div>

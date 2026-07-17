@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+{{template "head" .}}
+<body class="{{.Theme}}">
+
+    {{template "upbar" .}}
+
+    <style>
+        .history-container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 0 15px;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            text-decoration: none;
+        }
+
+        .revision-box {
+            background: #fff;
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .revision-box.current {
+            border-color: rgba(92,184,92,0.4);
+        }
+
+        .revision-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .revision-badge {
+            display: inline-block;
+            background: #eaf7ea;
+            color: #3c763d;
+            border: 1px solid rgba(92,184,92,0.4);
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+
+        .revision-body {
+            word-wrap: break-word;
+            line-height: 1.6;
+        }
+
+        .btn-revert {
+            padding: 8px 16px;
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .btn-revert:hover {
+            background: #ffe69c;
+        }
+    </style>
+
+    <div class="history-container">
+
+        <a class="back-link" href="/view?id={{.Post.ID}}">&lt;- Volver al post</a>
+
+        <h3>Historial de "{{.Post.Title}}"</h3>
+
+        <div class="revision-box current">
+            <div class="revision-header">
+                <span class="revision-badge">Versión actual</span>
+                <small>{{if .Post.UpdatedAt}}editado el {{.Post.UpdatedAt}}{{else}}publicado el {{.Post.Time}}{{end}}</small>
+            </div>
+            <h4 style="margin: 0 0 10px 0;">{{.Post.Title}}</h4>
+            <div class="revision-body">{{.Post.Markdown}}</div>
+        </div>
+
+        {{range .Revisions}}
+            <div class="revision-box">
+                <div class="revision-header">
+                    <small>Versión del {{.EditedAt}}</small>
+                    <form action="/post-revert" method="POST" style="margin: 0;">
+                        <input type="hidden" name="post_id" value="{{.PostID}}">
+                        <input type="hidden" name="revision_id" value="{{.ID}}">
+                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                        <button type="submit" class="btn-revert">Revertir a esta versión</button>
+                    </form>
+                </div>
+                <h4 style="margin: 0 0 10px 0;">{{.Title}}</h4>
+                <div class="revision-body">{{.Markdown}}</div>
+            </div>
+        {{else}}
+            <p style="color: gray;">Este post no tiene ediciones anteriores todavía.</p>
+        {{end}}
+
+    </div>
+
+</body>
+</html>

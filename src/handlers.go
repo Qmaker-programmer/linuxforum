@@ -330,6 +330,20 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		message := strings.TrimSpace(r.FormValue("message"))
 		action := r.FormValue("action")
 		draftID, _ := strconv.Atoi(r.FormValue("draft_id"))
+		editingPostID, _ := strconv.Atoi(r.FormValue("editing_post_id"))
+
+		var editingPost *Post
+		if editingPostID != 0 {
+			editingPost = getPostByID(editingPostID)
+			if editingPost == nil {
+				http.Error(w, "El post que estabas editando ya no existe", http.StatusNotFound)
+				return
+			}
+			if editingPost.User != username {
+				http.Error(w, "No eres el autor de este post", http.StatusForbidden)
+				return
+			}
+		}
 
 		if action == "insert-image" {
 			imageErr := ""
@@ -341,23 +355,25 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			}
 			query, _ := pageContext(r)
 			renderPage(w, r, "web/edit_post.html", struct {
-				Query      string
-				Theme      string
-				LoggedUser string
-				CSRFToken  string
-				Title      string
-				Message    string
-				DraftID    int
-				Error      string
+				Query         string
+				Theme         string
+				LoggedUser    string
+				CSRFToken     string
+				Title         string
+				Message       string
+				DraftID       int
+				EditingPostID int
+				Error         string
 			}{
-				Query:      query,
-				Theme:      getTheme(r),
-				LoggedUser: username,
-				CSRFToken:  getCSRFToken(r),
-				Title:      title,
-				Message:    message,
-				DraftID:    draftID,
-				Error:      imageErr,
+				Query:         query,
+				Theme:         getTheme(r),
+				LoggedUser:    username,
+				CSRFToken:     getCSRFToken(r),
+				Title:         title,
+				Message:       message,
+				DraftID:       draftID,
+				EditingPostID: editingPostID,
+				Error:         imageErr,
 			})
 			return
 		}
@@ -379,23 +395,25 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			preview := renderMarkdown(message)
 			query, _ := pageContext(r)
 			renderPage(w, r, "web/post_preview.html", struct {
-				Query      string
-				Theme      string
-				LoggedUser string
-				CSRFToken  string
-				Title      string
-				Message    string
-				Preview    template.HTML
-				DraftID    int
+				Query         string
+				Theme         string
+				LoggedUser    string
+				CSRFToken     string
+				Title         string
+				Message       string
+				Preview       template.HTML
+				DraftID       int
+				EditingPostID int
 			}{
-				Query:      query,
-				Theme:      getTheme(r),
-				LoggedUser: username,
-				CSRFToken:  getCSRFToken(r),
-				Title:      title,
-				Message:    message,
-				Preview:    preview,
-				DraftID:    draftID,
+				Query:         query,
+				Theme:         getTheme(r),
+				LoggedUser:    username,
+				CSRFToken:     getCSRFToken(r),
+				Title:         title,
+				Message:       message,
+				Preview:       preview,
+				DraftID:       draftID,
+				EditingPostID: editingPostID,
 			})
 			return
 		}
@@ -403,29 +421,44 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		if action == "edit" {
 			query, _ := pageContext(r)
 			renderPage(w, r, "web/edit_post.html", struct {
-				Query      string
-				Theme      string
-				LoggedUser string
-				CSRFToken  string
-				Title      string
-				Message    string
-				DraftID    int
-				Error      string
+				Query         string
+				Theme         string
+				LoggedUser    string
+				CSRFToken     string
+				Title         string
+				Message       string
+				DraftID       int
+				EditingPostID int
+				Error         string
 			}{
-				Query:      query,
-				Theme:      getTheme(r),
-				LoggedUser: username,
-				CSRFToken:  getCSRFToken(r),
-				Title:      title,
-				Message:    message,
-				DraftID:    draftID,
-				Error:      "",
+				Query:         query,
+				Theme:         getTheme(r),
+				LoggedUser:    username,
+				CSRFToken:     getCSRFToken(r),
+				Title:         title,
+				Message:       message,
+				DraftID:       draftID,
+				EditingPostID: editingPostID,
+				Error:         "",
 			})
 			return
 		}
 
-		now := time.Now().Format("2006-01-02 15:04")
 		htmlContent := renderMarkdown(message)
+
+		if editingPost != nil {
+			if err := updatePostWithRevision(editingPostID, title, message, string(htmlContent)); err != nil {
+				http.Error(w, "Error al actualizar la publicación", http.StatusInternalServerError)
+				return
+			}
+			if draftID != 0 {
+				deleteDraft(draftID, username)
+			}
+			http.Redirect(w, r, "/view?id="+strconv.Itoa(editingPostID), http.StatusSeeOther)
+			return
+		}
+
+		now := time.Now().Format("2006-01-02 15:04")
 		if _, err := db.Exec("INSERT INTO posts (title, user, message, markdown, created_at) VALUES (?, ?, ?, ?, ?)", title, username, message, htmlContent, now); err != nil {
 			http.Error(w, "Error al crear la publicación", http.StatusInternalServerError)
 			return
@@ -454,35 +487,51 @@ func handlePostForm(w http.ResponseWriter, r *http.Request) {
 	title := ""
 	message := ""
 	draftID := 0
+	editingPostID := 0
 	if idStr := r.URL.Query().Get("draft_id"); idStr != "" {
 		if id, err := strconv.Atoi(idStr); err == nil {
 			if draft := getDraftByID(id); draft != nil && draft.Username == username {
 				title = draft.Title
 				message = draft.Message
 				draftID = draft.ID
+				editingPostID = draft.EditingPostID
+			}
+		}
+	} else if idStr := r.URL.Query().Get("id"); idStr != "" {
+		if id, err := strconv.Atoi(idStr); err == nil {
+			if post := getPostByID(id); post != nil {
+				if post.User != username {
+					http.Error(w, "No eres el autor de este post", http.StatusForbidden)
+					return
+				}
+				title = post.Title
+				message = post.Message
+				editingPostID = post.ID
 			}
 		}
 	}
 
 	query, _ := pageContext(r)
 	renderPage(w, r, "web/edit_post.html", struct {
-		Query      string
-		Theme      string
-		LoggedUser string
-		CSRFToken  string
-		Title      string
-		Message    string
-		DraftID    int
-		Error      string
+		Query         string
+		Theme         string
+		LoggedUser    string
+		CSRFToken     string
+		Title         string
+		Message       string
+		DraftID       int
+		EditingPostID int
+		Error         string
 	}{
-		Query:      query,
-		Theme:      getTheme(r),
-		LoggedUser: username,
-		CSRFToken:  getCSRFToken(r),
-		Title:      title,
-		Message:    message,
-		DraftID:    draftID,
-		Error:      "",
+		Query:         query,
+		Theme:         getTheme(r),
+		LoggedUser:    username,
+		CSRFToken:     getCSRFToken(r),
+		Title:         title,
+		Message:       message,
+		DraftID:       draftID,
+		EditingPostID: editingPostID,
+		Error:         "",
 	})
 }
 
@@ -505,6 +554,15 @@ func handleDraftSave(w http.ResponseWriter, r *http.Request) {
 	title := strings.TrimSpace(r.FormValue("title"))
 	message := strings.TrimSpace(r.FormValue("message"))
 	draftID, _ := strconv.Atoi(r.FormValue("draft_id"))
+	editingPostID, _ := strconv.Atoi(r.FormValue("editing_post_id"))
+
+	if editingPostID != 0 {
+		post := getPostByID(editingPostID)
+		if post == nil || post.User != username {
+			http.Error(w, "No eres el autor de este post", http.StatusForbidden)
+			return
+		}
+	}
 
 	if title == "" && message == "" {
 		http.Redirect(w, r, "/post-form", http.StatusSeeOther)
@@ -519,7 +577,7 @@ func handleDraftSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newID, err := saveDraft(draftID, username, title, message)
+	newID, err := saveDraft(draftID, username, title, message, editingPostID)
 	if err != nil {
 		http.Error(w, "Error al guardar el borrador", http.StatusInternalServerError)
 		return
@@ -1212,6 +1270,93 @@ func handleConfirm(w http.ResponseWriter, r *http.Request) {
 		EmailSent:  r.URL.Query().Get("email_sent"),
 		CSRFToken:  getCSRFToken(r),
 	})
+}
+
+func handlePostHistory(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.URL.Query().Get("id"))
+	if err != nil {
+		http.Error(w, "ID inválido", http.StatusBadRequest)
+		return
+	}
+
+	post := getPostByID(id)
+	if post == nil {
+		http.Error(w, "Post no encontrado", http.StatusNotFound)
+		return
+	}
+
+	query, loggedUser := pageContext(r)
+	if loggedUser != post.User {
+		http.Error(w, "No eres el autor de este post", http.StatusForbidden)
+		return
+	}
+
+	renderPage(w, r, "web/post-history.html", struct {
+		Query      string
+		LoggedUser string
+		Theme      string
+		Post       *Post
+		Revisions  []PostRevision
+		CSRFToken  string
+	}{
+		Query:      query,
+		LoggedUser: loggedUser,
+		Theme:      getTheme(r),
+		Post:       post,
+		Revisions:  getPostRevisions(id),
+		CSRFToken:  getCSRFToken(r),
+	})
+}
+
+func handlePostRevert(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	loggedUser := getLoggedUser(r)
+	if loggedUser == "" {
+		http.Redirect(w, r, "/web/login.html", http.StatusSeeOther)
+		return
+	}
+	if !validateCSRF(r) {
+		http.Error(w, "CSRF token inválido", http.StatusForbidden)
+		return
+	}
+
+	postID, err := strconv.Atoi(r.FormValue("post_id"))
+	if err != nil {
+		http.Error(w, "ID inválido", http.StatusBadRequest)
+		return
+	}
+	revisionID, err := strconv.Atoi(r.FormValue("revision_id"))
+	if err != nil {
+		http.Error(w, "Revisión inválida", http.StatusBadRequest)
+		return
+	}
+
+	post := getPostByID(postID)
+	if post == nil {
+		http.Error(w, "Post no encontrado", http.StatusNotFound)
+		return
+	}
+	if post.User != loggedUser {
+		http.Error(w, "No eres el autor de este post", http.StatusForbidden)
+		return
+	}
+
+	revision := getPostRevisionByID(revisionID)
+	if revision == nil || revision.PostID != postID {
+		http.Error(w, "Revisión no encontrada", http.StatusNotFound)
+		return
+	}
+
+	if err := updatePostWithRevision(postID, revision.Title, revision.Message, string(revision.Markdown)); err != nil {
+		http.Error(w, "Error al revertir la publicación", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/view?id="+strconv.Itoa(postID), http.StatusSeeOther)
 }
 
 func handleUser(w http.ResponseWriter, r *http.Request) {

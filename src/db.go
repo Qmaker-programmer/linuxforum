@@ -182,6 +182,50 @@ func runMigrations() {
 				}
 			},
 		},
+		{
+			Version: 8,
+			Apply: func() {
+				var count int
+				db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('posts') WHERE name='updated_at'").Scan(&count)
+				if count == 0 {
+					if _, err := db.Exec("ALTER TABLE posts ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''"); err != nil {
+						panic(fmt.Sprintf("Migración %d fallida: %v", 8, err))
+					}
+				}
+			},
+		},
+		{
+			// Each row is a snapshot of a post's content right before it
+			// changed (edit or revert), so history + revert share one
+			// mechanism: see updatePostWithRevision in this file.
+			Version: 9,
+			Apply: func() {
+				if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS post_revisions (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					post_id INTEGER NOT NULL,
+					title TEXT NOT NULL,
+					message TEXT NOT NULL,
+					markdown TEXT NOT NULL,
+					edited_at TEXT NOT NULL
+				)`); err != nil {
+					panic(fmt.Sprintf("Migración %d fallida: %v", 9, err))
+				}
+			},
+		},
+		{
+			// 0 = draft of a brand-new post (as before); non-zero = draft
+			// of an edit to that existing post.
+			Version: 10,
+			Apply: func() {
+				var count int
+				db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('post_drafts') WHERE name='editing_post_id'").Scan(&count)
+				if count == 0 {
+					if _, err := db.Exec("ALTER TABLE post_drafts ADD COLUMN editing_post_id INTEGER NOT NULL DEFAULT 0"); err != nil {
+						panic(fmt.Sprintf("Migración %d fallida: %v", 10, err))
+					}
+				}
+			},
+		},
 	}
 
 	for _, m := range migrations {
@@ -211,7 +255,7 @@ func initDB() {
 }
 
 func getAllPosts() []Post {
-	rows, err := db.Query("SELECT id, title, user, message, markdown, created_at FROM posts ORDER BY created_at DESC")
+	rows, err := db.Query("SELECT id, title, user, message, markdown, created_at, updated_at FROM posts ORDER BY created_at DESC")
 	if err != nil {
 		return nil
 	}
@@ -219,7 +263,7 @@ func getAllPosts() []Post {
 	var result []Post
 	for rows.Next() {
 		var p Post
-		if err := rows.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Markdown, &p.Time); err != nil {
+		if err := rows.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Markdown, &p.Time, &p.UpdatedAt); err != nil {
 			continue
 		}
 		result = append(result, p)
@@ -228,12 +272,67 @@ func getAllPosts() []Post {
 }
 
 func getPostByID(id int) *Post {
-	row := db.QueryRow("SELECT id, title, user, message, markdown, created_at FROM posts WHERE id = ?", id)
+	row := db.QueryRow("SELECT id, title, user, message, markdown, created_at, updated_at FROM posts WHERE id = ?", id)
 	var p Post
-	if err := row.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Markdown, &p.Time); err != nil {
+	if err := row.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Markdown, &p.Time, &p.UpdatedAt); err != nil {
 		return nil
 	}
 	return &p
+}
+
+// updatePostWithRevision snapshots the post's current content into
+// post_revisions before overwriting it. Both editing a post and
+// reverting to an old revision go through this same function — a
+// revert just passes an old revision's content as the "new" content,
+// which leaves the pre-revert state as a fresh revision too.
+func updatePostWithRevision(postID int, newTitle, newMessage, newMarkdown string) error {
+	current := getPostByID(postID)
+	if current == nil {
+		return fmt.Errorf("Post no encontrado.")
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	now := time.Now().Format("2006-01-02 15:04")
+	if _, err := tx.Exec("INSERT INTO post_revisions (post_id, title, message, markdown, edited_at) VALUES (?, ?, ?, ?, ?)",
+		postID, current.Title, current.Message, string(current.Markdown), now); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("UPDATE posts SET title = ?, message = ?, markdown = ?, updated_at = ? WHERE id = ?",
+		newTitle, newMessage, newMarkdown, now, postID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func getPostRevisions(postID int) []PostRevision {
+	rows, err := db.Query("SELECT id, post_id, title, message, markdown, edited_at FROM post_revisions WHERE post_id = ? ORDER BY edited_at DESC, id DESC", postID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var result []PostRevision
+	for rows.Next() {
+		var rv PostRevision
+		if err := rows.Scan(&rv.ID, &rv.PostID, &rv.Title, &rv.Message, &rv.Markdown, &rv.EditedAt); err != nil {
+			continue
+		}
+		result = append(result, rv)
+	}
+	return result
+}
+
+func getPostRevisionByID(id int) *PostRevision {
+	row := db.QueryRow("SELECT id, post_id, title, message, markdown, edited_at FROM post_revisions WHERE id = ?", id)
+	var rv PostRevision
+	if err := row.Scan(&rv.ID, &rv.PostID, &rv.Title, &rv.Message, &rv.Markdown, &rv.EditedAt); err != nil {
+		return nil
+	}
+	return &rv
 }
 
 func getCommentByID(id int) *Comment {
@@ -290,17 +389,21 @@ func deletePostCascade(postID int, postMessage string) {
 	imagePaths = append(imagePaths, extractUploadedImagePaths(postMessage)...)
 	imagePaths = append(imagePaths, collectMessageImages("SELECT message FROM comments WHERE post_id = ?", postID)...)
 	imagePaths = append(imagePaths, collectMessageImages("SELECT message FROM comment_drafts WHERE post_id = ?", postID)...)
+	imagePaths = append(imagePaths, collectMessageImages("SELECT message FROM post_revisions WHERE post_id = ?", postID)...)
+	imagePaths = append(imagePaths, collectMessageImages("SELECT message FROM post_drafts WHERE editing_post_id = ?", postID)...)
 
 	db.Exec("DELETE FROM comments WHERE post_id = ?", postID)
 	db.Exec("DELETE FROM saved_posts WHERE post_id = ?", postID)
 	db.Exec("DELETE FROM comment_drafts WHERE post_id = ?", postID)
+	db.Exec("DELETE FROM post_revisions WHERE post_id = ?", postID)
+	db.Exec("DELETE FROM post_drafts WHERE editing_post_id = ?", postID)
 	db.Exec("DELETE FROM posts WHERE id = ?", postID)
 
 	deleteUploadedImages(imagePaths)
 }
 
 func getUserPosts(username string) []Post {
-	rows, err := db.Query("SELECT id, title, user, message, markdown, created_at FROM posts WHERE user = ? ORDER BY created_at DESC", username)
+	rows, err := db.Query("SELECT id, title, user, message, markdown, created_at, updated_at FROM posts WHERE user = ? ORDER BY created_at DESC", username)
 	if err != nil {
 		return nil
 	}
@@ -308,7 +411,7 @@ func getUserPosts(username string) []Post {
 	var result []Post
 	for rows.Next() {
 		var p Post
-		if err := rows.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Markdown, &p.Time); err != nil {
+		if err := rows.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Markdown, &p.Time, &p.UpdatedAt); err != nil {
 			continue
 		}
 		result = append(result, p)
@@ -317,7 +420,7 @@ func getUserPosts(username string) []Post {
 }
 
 func getSavedPosts(username string) []Post {
-	rows, err := db.Query("SELECT p.id, p.title, p.user, p.message, p.markdown, p.created_at FROM posts p JOIN saved_posts s ON p.id = s.post_id WHERE s.username = ? ORDER BY p.created_at DESC", username)
+	rows, err := db.Query("SELECT p.id, p.title, p.user, p.message, p.markdown, p.created_at, p.updated_at FROM posts p JOIN saved_posts s ON p.id = s.post_id WHERE s.username = ? ORDER BY p.created_at DESC", username)
 	if err != nil {
 		return nil
 	}
@@ -325,7 +428,7 @@ func getSavedPosts(username string) []Post {
 	var result []Post
 	for rows.Next() {
 		var p Post
-		if err := rows.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Markdown, &p.Time); err != nil {
+		if err := rows.Scan(&p.ID, &p.Title, &p.User, &p.Message, &p.Markdown, &p.Time, &p.UpdatedAt); err != nil {
 			continue
 		}
 		result = append(result, p)
@@ -340,16 +443,18 @@ func isPostSaved(username string, postID int) bool {
 }
 
 func getDraftByID(id int) *Draft {
-	row := db.QueryRow("SELECT id, username, title, message, created_at, updated_at FROM post_drafts WHERE id = ?", id)
+	row := db.QueryRow("SELECT id, username, title, message, editing_post_id, created_at, updated_at FROM post_drafts WHERE id = ?", id)
 	var d Draft
-	if err := row.Scan(&d.ID, &d.Username, &d.Title, &d.Message, &d.CreatedAt, &d.UpdatedAt); err != nil {
+	if err := row.Scan(&d.ID, &d.Username, &d.Title, &d.Message, &d.EditingPostID, &d.CreatedAt, &d.UpdatedAt); err != nil {
 		return nil
 	}
 	return &d
 }
 
 func getUserDrafts(username string) []Draft {
-	rows, err := db.Query("SELECT id, username, title, message, created_at, updated_at FROM post_drafts WHERE username = ? ORDER BY updated_at DESC", username)
+	rows, err := db.Query(`SELECT pd.id, pd.username, pd.title, pd.message, pd.editing_post_id, pd.created_at, pd.updated_at, COALESCE(p.title, '')
+		FROM post_drafts pd LEFT JOIN posts p ON pd.editing_post_id = p.id
+		WHERE pd.username = ? ORDER BY pd.updated_at DESC`, username)
 	if err != nil {
 		return nil
 	}
@@ -357,7 +462,7 @@ func getUserDrafts(username string) []Draft {
 	var result []Draft
 	for rows.Next() {
 		var d Draft
-		if err := rows.Scan(&d.ID, &d.Username, &d.Title, &d.Message, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.Username, &d.Title, &d.Message, &d.EditingPostID, &d.CreatedAt, &d.UpdatedAt, &d.EditingPostTitle); err != nil {
 			continue
 		}
 		result = append(result, d)
@@ -365,13 +470,13 @@ func getUserDrafts(username string) []Draft {
 	return result
 }
 
-func saveDraft(draftID int, username, title, message string) (int, error) {
+func saveDraft(draftID int, username, title, message string, editingPostID int) (int, error) {
 	now := time.Now().Format("2006-01-02 15:04")
 
 	if draftID != 0 {
 		existing := getDraftByID(draftID)
 		if existing != nil && existing.Username == username {
-			if _, err := db.Exec("UPDATE post_drafts SET title = ?, message = ?, updated_at = ? WHERE id = ?", title, message, now, draftID); err != nil {
+			if _, err := db.Exec("UPDATE post_drafts SET title = ?, message = ?, editing_post_id = ?, updated_at = ? WHERE id = ?", title, message, editingPostID, now, draftID); err != nil {
 				return 0, err
 			}
 			deleteUploadedImages(diffRemovedImages(existing.Message, message))
@@ -379,7 +484,7 @@ func saveDraft(draftID int, username, title, message string) (int, error) {
 		}
 	}
 
-	res, err := db.Exec("INSERT INTO post_drafts (username, title, message, created_at, updated_at) VALUES (?, ?, ?, ?, ?)", username, title, message, now, now)
+	res, err := db.Exec("INSERT INTO post_drafts (username, title, message, editing_post_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)", username, title, message, editingPostID, now, now)
 	if err != nil {
 		return 0, err
 	}

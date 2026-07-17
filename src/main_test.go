@@ -684,7 +684,7 @@ func TestDeleteAccountRemovesDrafts(t *testing.T) {
 	setupTest(t)
 	db.Exec("INSERT INTO posts (title, user, message, created_at) VALUES (?, ?, ?, ?)", "Post", "testuser", "Body", "2025-01-01 12:00")
 
-	if _, err := saveDraft(0, "testuser", "Borrador", "contenido"); err != nil {
+	if _, err := saveDraft(0, "testuser", "Borrador", "contenido", 0); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := saveCommentDraft(0, "testuser", 1, 0, "borrador comentario"); err != nil {
@@ -1020,5 +1020,177 @@ func TestViewPostWithCommentAsLoggedInUser(t *testing.T) {
 	}
 	if strings.Contains(body, "can't evaluate field") {
 		t.Error("a template execution error leaked into the response body")
+	}
+}
+
+func TestEditExistingPost(t *testing.T) {
+	setupTest(t)
+	db.Exec("INSERT INTO posts (title, user, message, created_at) VALUES (?, ?, ?, ?)", "Original Title", "testuser", "Original body", "2025-01-01 12:00")
+
+	form := url.Values{"title": {"Updated Title"}, "message": {"Updated body"}, "csrf_token": {"test-csrf-token"}, "editing_post_id": {"1"}, "draft_id": {"0"}, "action": {"send"}}
+	req := httptest.NewRequest(http.MethodPost, "/post", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginUser(t, req)
+	w := httptest.NewRecorder()
+	handlePost(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303, got %d", w.Code)
+	}
+	if loc := w.Result().Header.Get("Location"); loc != "/view?id=1" {
+		t.Errorf("expected redirect to /view?id=1, got %s", loc)
+	}
+
+	updated := getPostByID(1)
+	if updated.Title != "Updated Title" || updated.Message != "Updated body" {
+		t.Errorf("post content not updated: %+v", updated)
+	}
+	if updated.UpdatedAt == "" {
+		t.Error("expected updated_at to be set after an edit")
+	}
+
+	revisions := getPostRevisions(1)
+	if len(revisions) != 1 {
+		t.Fatalf("expected 1 revision, got %d", len(revisions))
+	}
+	if revisions[0].Title != "Original Title" || revisions[0].Message != "Original body" {
+		t.Errorf("revision doesn't hold the old content: %+v", revisions[0])
+	}
+}
+
+func TestEditPostUnauthorized(t *testing.T) {
+	setupTest(t)
+	hashed, _ := bcrypt.GenerateFromPassword([]byte("pass1234"), bcrypt.DefaultCost)
+	db.Exec("INSERT INTO users (username, password) VALUES (?, ?)", "otheruser", string(hashed))
+	db.Exec("INSERT INTO posts (title, user, message, created_at) VALUES (?, ?, ?, ?)", "Their Post", "otheruser", "Body", "2025-01-01 12:00")
+
+	form := url.Values{"title": {"Hijacked"}, "message": {"Hijacked body"}, "csrf_token": {"test-csrf-token"}, "editing_post_id": {"1"}, "draft_id": {"0"}, "action": {"send"}}
+	req := httptest.NewRequest(http.MethodPost, "/post", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginUser(t, req)
+	w := httptest.NewRecorder()
+	handlePost(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", w.Code)
+	}
+}
+
+func TestPostHistoryPage(t *testing.T) {
+	setupTest(t)
+	db.Exec("INSERT INTO posts (title, user, message, created_at) VALUES (?, ?, ?, ?)", "Title v1", "testuser", "Body v1", "2025-01-01 12:00")
+	if err := updatePostWithRevision(1, "Title v2", "Body v2", "Body v2"); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/post-history?id=1", nil)
+	loginUser(t, req)
+	w := httptest.NewRecorder()
+	handlePostHistory(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "Title v1") {
+		t.Error("expected the old revision's title to appear in the history page")
+	}
+	if !strings.Contains(body, "Title v2") {
+		t.Error("expected the current title to appear in the history page")
+	}
+}
+
+func TestRevertPost(t *testing.T) {
+	setupTest(t)
+	db.Exec("INSERT INTO posts (title, user, message, created_at) VALUES (?, ?, ?, ?)", "Title v1", "testuser", "Body v1", "2025-01-01 12:00")
+	if err := updatePostWithRevision(1, "Title v2", "Body v2", "Body v2"); err != nil {
+		t.Fatal(err)
+	}
+
+	revisions := getPostRevisions(1)
+	if len(revisions) != 1 {
+		t.Fatalf("expected 1 revision before revert, got %d", len(revisions))
+	}
+	oldRevisionID := revisions[0].ID
+
+	form := url.Values{"post_id": {"1"}, "revision_id": {strconv.Itoa(oldRevisionID)}, "csrf_token": {"test-csrf-token"}}
+	req := httptest.NewRequest(http.MethodPost, "/post-revert", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginUser(t, req)
+	w := httptest.NewRecorder()
+	handlePostRevert(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303, got %d", w.Code)
+	}
+
+	reverted := getPostByID(1)
+	if reverted.Title != "Title v1" || reverted.Message != "Body v1" {
+		t.Errorf("expected revert to restore the old content, got %+v", reverted)
+	}
+
+	revisionsAfter := getPostRevisions(1)
+	if len(revisionsAfter) != 2 {
+		t.Fatalf("expected revert to leave a new revision of the pre-revert state, got %d revisions", len(revisionsAfter))
+	}
+}
+
+func TestSaveDraftOfPostEdit(t *testing.T) {
+	setupTest(t)
+	db.Exec("INSERT INTO posts (title, user, message, created_at) VALUES (?, ?, ?, ?)", "Original", "testuser", "Original body", "2025-01-01 12:00")
+
+	form := url.Values{"title": {"Draft edit"}, "message": {"Draft edit body"}, "csrf_token": {"test-csrf-token"}, "draft_id": {"0"}, "editing_post_id": {"1"}}
+	req := httptest.NewRequest(http.MethodPost, "/draft", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginUser(t, req)
+	w := httptest.NewRecorder()
+	handleDraftSave(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303, got %d", w.Code)
+	}
+
+	drafts := getUserDrafts("testuser")
+	if len(drafts) != 1 || drafts[0].EditingPostID != 1 {
+		t.Fatalf("expected a draft with EditingPostID=1, got %+v", drafts)
+	}
+
+	form2 := url.Values{"title": {"Draft edit"}, "message": {"Draft edit body"}, "csrf_token": {"test-csrf-token"}, "draft_id": {strconv.Itoa(drafts[0].ID)}, "editing_post_id": {"1"}, "action": {"send"}}
+	req2 := httptest.NewRequest(http.MethodPost, "/post", strings.NewReader(form2.Encode()))
+	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginUser(t, req2)
+	w2 := httptest.NewRecorder()
+	handlePost(w2, req2)
+
+	if w2.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303, got %d", w2.Code)
+	}
+	if loc := w2.Result().Header.Get("Location"); loc != "/view?id=1" {
+		t.Errorf("expected redirect to /view?id=1 (update, not create), got %s", loc)
+	}
+
+	if len(getAllPosts()) != 1 {
+		t.Errorf("expected still only 1 post (updated, not created), got %d", len(getAllPosts()))
+	}
+	if len(getUserDrafts("testuser")) != 0 {
+		t.Error("expected the draft to be consumed after publishing")
+	}
+}
+
+func TestDeletePostCascadeCleansRevisions(t *testing.T) {
+	setupTest(t)
+	db.Exec("INSERT INTO posts (title, user, message, created_at) VALUES (?, ?, ?, ?)", "Title v1", "testuser", "Body v1", "2025-01-01 12:00")
+	if err := updatePostWithRevision(1, "Title v2", "Body v2", "Body v2"); err != nil {
+		t.Fatal(err)
+	}
+	if len(getPostRevisions(1)) != 1 {
+		t.Fatal("expected 1 revision before deletion")
+	}
+
+	post := getPostByID(1)
+	deletePostCascade(1, post.Message)
+
+	if len(getPostRevisions(1)) != 0 {
+		t.Error("expected revisions to be removed when the post is deleted")
 	}
 }

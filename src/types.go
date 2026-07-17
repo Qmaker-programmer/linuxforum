@@ -23,12 +23,24 @@ import (
 )
 
 type Post struct {
+	ID        int
+	Title     string
+	User      string
+	Message   string
+	Markdown  template.HTML
+	Time      string
+	UpdatedAt string
+}
+
+// PostRevision is a snapshot of a Post's content right before it changed
+// (an edit or a revert both go through updatePostWithRevision in db.go).
+type PostRevision struct {
 	ID       int
+	PostID   int
 	Title    string
-	User     string
 	Message  string
 	Markdown template.HTML
-	Time     string
+	EditedAt string
 }
 
 type Comment struct {
@@ -43,12 +55,14 @@ type Comment struct {
 }
 
 type Draft struct {
-	ID        int
-	Username  string
-	Title     string
-	Message   string
-	CreatedAt string
-	UpdatedAt string
+	ID               int
+	Username         string
+	Title            string
+	Message          string
+	EditingPostID    int
+	EditingPostTitle string
+	CreatedAt        string
+	UpdatedAt        string
 }
 
 type CommentDraft struct {

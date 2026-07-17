@@ -89,6 +89,7 @@
                 <form action="/post" method="POST">
                     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                     <input type="hidden" name="draft_id" value="{{.DraftID}}">
+                    <input type="hidden" name="editing_post_id" value="{{.EditingPostID}}">
                     <input type="hidden" name="title" value="{{.Title}}">
                     <input type="hidden" name="message" value="{{.Message}}">
                     <button type="submit" name="action" value="edit" class="btn-edit">Volver a editar</button>
@@ -96,9 +97,10 @@
                 <form action="/post" method="POST">
                     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                     <input type="hidden" name="draft_id" value="{{.DraftID}}">
+                    <input type="hidden" name="editing_post_id" value="{{.EditingPostID}}">
                     <input type="hidden" name="title" value="{{.Title}}">
                     <input type="hidden" name="message" value="{{.Message}}">
-                    <button type="submit" name="action" value="send" class="btn-send">Publicar</button>
+                    <button type="submit" name="action" value="send" class="btn-send">{{if .EditingPostID}}Guardar cambios{{else}}Publicar{{end}}</button>
                 </form>
             </div>
         </div>

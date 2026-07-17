@@ -158,7 +158,11 @@
                 {{range .Drafts}}
                     <li class="post-row">
                         <div class="post-info">
-                            <a class="post-title" href="/post-form?draft_id={{.ID}}"><strong>{{if .Title}}{{.Title}}{{else}}(Sin título){{end}}</strong></a>
+                            {{if .EditingPostID}}
+                                <a class="post-title" href="/post-form?draft_id={{.ID}}"><strong>Editando: {{if .EditingPostTitle}}{{.EditingPostTitle}}{{else}}(post eliminado){{end}}</strong></a>
+                            {{else}}
+                                <a class="post-title" href="/post-form?draft_id={{.ID}}"><strong>{{if .Title}}{{.Title}}{{else}}(Sin título){{end}}</strong></a>
+                            {{end}}
                             <span class="post-meta">Actualizado el {{.UpdatedAt}}</span>
                         </div>
                         <div class="draft-actions">

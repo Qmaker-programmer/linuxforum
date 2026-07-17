@@ -139,7 +139,7 @@
         <main class="main-content">
             <article>
                 <h1 style="margin-bottom:8px;">{{.Post.Title}}</h1>
-                <p><small>Publicado por <a href="/user?u={{.Post.User}}"><strong>{{.Post.User}}</strong></a> a las {{.Post.Time}}</small></p>
+                <p><small>Publicado por <a href="/user?u={{.Post.User}}"><strong>{{.Post.User}}</strong></a> a las {{.Post.Time}}{{if .Post.UpdatedAt}} · <a href="/post-history?id={{.Post.ID}}">editado el {{.Post.UpdatedAt}}</a>{{end}}</small></p>
                 <hr>
                 <div class="post-body">{{.Post.Markdown}}</div>
             </article>
@@ -208,6 +208,14 @@
                     {{end}}
                     
                     {{if .IsAuthor}}
+                        <form action="/post-form" method="GET" style="margin:0;">
+                            <input type="hidden" name="id" value="{{.Post.ID}}">
+                            <button type="submit">Editar</button>
+                        </form>
+                        <form action="/post-history" method="GET" style="margin:0;">
+                            <input type="hidden" name="id" value="{{.Post.ID}}">
+                            <button type="submit">Ver historial</button>
+                        </form>
                         <form action="/confirm" method="GET" style="margin:0;">
                             <input type="hidden" name="id" value="{{.Post.ID}}">
                             <button type="submit" style="color: red; border-color: rgba(217,83,79,0.3);">Eliminar</button>

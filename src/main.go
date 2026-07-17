@@ -256,6 +256,8 @@ func main() {
 	http.HandleFunc("/search", handleSearch)
 	http.HandleFunc("/view", handleView)
 	http.HandleFunc("/confirm", handleConfirm)
+	http.HandleFunc("/post-history", handlePostHistory)
+	http.HandleFunc("/post-revert", handlePostRevert)
 	http.HandleFunc("/user", handleUser)
 	http.HandleFunc("/profile", handleProfile)
 	http.HandleFunc("/save", handleSave)

@@ -6,10 +6,11 @@ Linux Forum es un sistema de foros ligero, rápido y fácil de integrar en cualq
 
 ## Características
 
-- **Publicaciones** — Creación, visualización, eliminación (solo autor, con confirmación del título) y filtrado por fecha/título
+- **Publicaciones** — Creación, edición, visualización, eliminación (solo autor, con confirmación del título) y filtrado por fecha/título
+- **Historial de versiones y revert** — Cada edición de un post guarda una copia de cómo estaba antes; el autor puede ver ese historial completo (`/post-history?id=N`) y revertir a cualquier versión anterior, lo cual a su vez queda registrado como una versión más (revertir también es reversible). Sin poda automática todavía — las versiones se acumulan sin límite mientras el post exista, y se limpian recién si se borra el post entero
 - **Markdown** — Posts y comentarios se redactan en Markdown (GFM) y se renderizan sanitizados; hay previsualización antes de publicar
 - **Imágenes** — Se pueden insertar imágenes (PNG/JPEG/GIF/WEBP, hasta 5 MB) al redactar un post o comentario; el tipo real del archivo se valida por contenido, no por extensión
-- **Borradores** — Tanto de posts como de comentarios: se guardan, se listan por separado en `/drafts` y se retoman más tarde sin perder lo escrito
+- **Borradores** — Tanto de posts nuevos, de ediciones a un post existente, como de comentarios: se guardan, se listan por separado en `/drafts` (un borrador de edición se distingue como "Editando: <título>") y se retoman más tarde sin perder lo escrito
 - **Paginación** — Los listados de posts (inicio, filtrado, búsqueda) se paginan de a 20
 - **Filtrado** — Ordenar posts por fecha (asc/desc) o título (A-Z / Z-A) desde la página principal y desde los resultados de búsqueda
 - **Comentarios anidados** — Respuestas en árbol con profundidad arbitraria
@@ -252,7 +253,8 @@ linuxforum/
     ├── post_preview.html    # Previsualización de post antes de publicar
     ├── comment.html         # Editor de comentario (Markdown, imágenes, borrador)
     ├── comment_preview.html # Previsualización de comentario antes de publicar
-    ├── drafts.html          # Borradores de posts y de comentarios (dos columnas)
+    ├── drafts.html          # Borradores de posts (nuevos o de ediciones) y de comentarios
+    ├── post-history.html    # Historial de versiones de un post + revert
     ├── confirm.html         # Confirmación de eliminación de post
     ├── confirm-post-deletion.html  # Confirmación de eliminación de post por correo
     ├── confirm-deletion.html      # Confirmación de eliminación de cuenta por correo
@@ -274,9 +276,11 @@ linuxforum/
 | GET    | `/search?user=X`           | Buscar usuarios por nombre                               | No            |
 | GET    | `/user?u=X`                | Ver perfil de usuario                                    | No            |
 | GET    | `/confirm?id=N`            | Página de confirmación para eliminar post                | No*           |
-| POST   | `/post`                    | Crear post, previsualizar, insertar imagen o editar      | Sí            |
-| GET    | `/post-form`                | Formulario de nuevo post (o retomar un borrador)         | Sí            |
-| POST   | `/draft`                   | Guardar borrador de post                                 | Sí            |
+| POST   | `/post`                    | Crear o editar post, previsualizar, insertar imagen      | Sí            |
+| GET    | `/post-form?id=N`           | Formulario de nuevo post, editar uno existente (autor) o retomar un borrador | Sí |
+| GET    | `/post-history?id=N`       | Ver historial de versiones de un post (autor)            | Sí            |
+| POST   | `/post-revert`             | Revertir un post a una versión anterior (autor)          | Sí            |
+| POST   | `/draft`                   | Guardar borrador de post (nuevo o de una edición)        | Sí            |
 | GET    | `/drafts`                  | Listar borradores de posts y de comentarios              | Sí            |
 | POST   | `/draft-delete`            | Eliminar borrador de post                                | Sí            |
 | POST   | `/comment`                 | Agregar comentario, previsualizar, insertar imagen o editar | Sí         |
@@ -306,14 +310,26 @@ linuxforum/
 
 ### Post
 
-| Campo    | Tipo         | Descripción               |
-|----------|--------------|---------------------------|
-| ID       | int          | Identificador único       |
-| Title    | string       | Título de la publicación  |
-| User     | string       | Nombre del autor          |
-| Message  | string       | Contenido en Markdown crudo |
-| Markdown | template.HTML| Contenido ya renderizado y sanitizado |
-| Time     | string       | Fecha y hora de publicación (YYYY-MM-DD HH:MM) |
+| Campo     | Tipo         | Descripción               |
+|-----------|--------------|---------------------------|
+| ID        | int          | Identificador único       |
+| Title     | string       | Título de la publicación  |
+| User      | string       | Nombre del autor          |
+| Message   | string       | Contenido en Markdown crudo |
+| Markdown  | template.HTML| Contenido ya renderizado y sanitizado |
+| Time      | string       | Fecha y hora de publicación (YYYY-MM-DD HH:MM) |
+| UpdatedAt | string       | Fecha de la última edición (vacío si nunca se editó) |
+
+### PostRevision (versión anterior de un post)
+
+| Campo    | Tipo         | Descripción                                    |
+|----------|--------------|-------------------------------------------------|
+| ID       | int          | Identificador único                              |
+| PostID   | int          | Post al que pertenece                            |
+| Title    | string       | Título como estaba antes de ese cambio           |
+| Message  | string       | Contenido en Markdown como estaba antes          |
+| Markdown | template.HTML| Contenido renderizado como estaba antes          |
+| EditedAt | string       | Momento en que se reemplazó por la versión siguiente |
 
 ### Comment
 
@@ -330,14 +346,16 @@ linuxforum/
 
 ### Draft (borrador de post)
 
-| Campo     | Tipo   | Descripción                    |
-|-----------|--------|---------------------------------|
-| ID        | int    | Identificador único             |
-| Username  | string | Dueño del borrador               |
-| Title     | string | Título en progreso               |
-| Message   | string | Contenido en progreso (Markdown) |
-| CreatedAt | string | Fecha de creación                |
-| UpdatedAt | string | Fecha de última edición          |
+| Campo            | Tipo   | Descripción                    |
+|------------------|--------|---------------------------------|
+| ID               | int    | Identificador único             |
+| Username         | string | Dueño del borrador               |
+| Title            | string | Título en progreso               |
+| Message          | string | Contenido en progreso (Markdown) |
+| EditingPostID    | int    | 0 = borrador de post nuevo; si no, ID del post existente que se está editando |
+| EditingPostTitle | string | Título actual de ese post (para mostrarlo en `/drafts`; vacío si el post ya no existe) |
+| CreatedAt        | string | Fecha de creación                |
+| UpdatedAt        | string | Fecha de última edición          |
 
 ### CommentDraft (borrador de comentario)
 
