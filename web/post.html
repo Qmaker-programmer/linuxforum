@@ -266,8 +266,8 @@
                 <form action="/comment-form" method="GET" class="reply-form">
                     <input type="hidden" name="post_id" value="{{.PostID}}">
                     <input type="hidden" name="parent_id" value="{{.Comment.ID}}">
-                    <input type="hidden" name="from" value="{{$.From}}">
-                    <input type="hidden" name="query" value="{{$.SearchQuery}}">
+                    <input type="hidden" name="from" value="{{.From}}">
+                    <input type="hidden" name="query" value="{{.SearchQuery}}">
                     <button type="submit">Responder a este comentario</button>
                 </form>
             {{end}}

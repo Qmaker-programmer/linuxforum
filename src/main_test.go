@@ -993,3 +993,32 @@ func TestApplyLogLevel(t *testing.T) {
 		}
 	}
 }
+
+// TestViewPostWithCommentAsLoggedInUser guards against a template
+// execution bug where post.html's "comment" sub-template referenced
+// $.From/$.SearchQuery — inside a {{template "comment" .}} invocation,
+// $ is bound to the *CommentNode being rendered, which never had those
+// fields, so the page failed mid-render for any logged-in user viewing
+// a post with at least one comment (the reply-form block only renders
+// under {{if .LoggedUser}}, which the previous tests here never hit).
+func TestViewPostWithCommentAsLoggedInUser(t *testing.T) {
+	setupTest(t)
+	db.Exec("INSERT INTO posts (title, user, message, created_at) VALUES (?, ?, ?, ?)", "Post", "testuser", "Body", "2025-01-01 12:00")
+	db.Exec("INSERT INTO comments (post_id, parent_id, user, message, created_at) VALUES (?, ?, ?, ?, ?)", 1, 0, "testuser", "Nice", "2025-01-01 12:30")
+
+	req := httptest.NewRequest(http.MethodGet, "/view?id=1&from=search&query=hola", nil)
+	loginUser(t, req)
+	w := httptest.NewRecorder()
+	handleView(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "</html>") {
+		t.Error("expected a fully-rendered page; response looks truncated by a template execution error")
+	}
+	if strings.Contains(body, "can't evaluate field") {
+		t.Error("a template execution error leaked into the response body")
+	}
+}

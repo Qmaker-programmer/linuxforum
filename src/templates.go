@@ -222,16 +222,18 @@ func redirectToLogin(w http.ResponseWriter, r *http.Request, params url.Values) 
 	http.Redirect(w, r, "/web/login.html?"+params.Encode(), http.StatusSeeOther)
 }
 
-func buildCommentTree(all []Comment, parentID, postID int, loggedUser, csrfToken string) []*CommentNode {
+func buildCommentTree(all []Comment, parentID, postID int, loggedUser, csrfToken, from, searchQuery string) []*CommentNode {
 	var nodes []*CommentNode
 	for _, c := range all {
 		if c.ParentID == parentID {
 			nodes = append(nodes, &CommentNode{
-				Comment:    c,
-				PostID:     postID,
-				LoggedUser: loggedUser,
-				CSRFToken:  csrfToken,
-				Children:   buildCommentTree(all, c.ID, postID, loggedUser, csrfToken),
+				Comment:     c,
+				PostID:      postID,
+				LoggedUser:  loggedUser,
+				CSRFToken:   csrfToken,
+				From:        from,
+				SearchQuery: searchQuery,
+				Children:    buildCommentTree(all, c.ID, postID, loggedUser, csrfToken, from, searchQuery),
 			})
 		}
 	}

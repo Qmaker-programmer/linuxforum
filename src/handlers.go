@@ -1124,7 +1124,7 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 		IsSaved:         isPostSaved(loggedUser, id),
 		IsAuthor:        loggedUser == foundPost.User,
 		CommentQuery:    commentQuery,
-		CommentTree:     buildCommentTree(postComments, 0, id, loggedUser, getCSRFToken(r)),
+		CommentTree:     buildCommentTree(postComments, 0, id, loggedUser, getCSRFToken(r), fromPage, searchQuery),
 		MatchedComments: filterComments(postComments, commentQuery),
 		CSRFToken:       getCSRFToken(r),
 		SortBy:          sortBy,

@@ -63,11 +63,13 @@ type CommentDraft struct {
 }
 
 type CommentNode struct {
-	Comment    Comment
-	Children   []*CommentNode
-	PostID     int
-	LoggedUser string
-	CSRFToken  string
+	Comment     Comment
+	Children    []*CommentNode
+	PostID      int
+	LoggedUser  string
+	CSRFToken   string
+	From        string
+	SearchQuery string
 }
 
 type User struct {
