@@ -1,8 +1,7 @@
 # Linux Forum
 
-¡Un foro minimalista y autónomo escrito en Go!
-
-Linux Forum es un sistema de foros ligero, rápido y fácil de integrar en cualquier sitio web. Usa SQLite, sesiones por cookie, configuración vía JSON, y cuenta con un sistema de comentarios anidados con podado inteligente. ¡Sin JavaScript, sin frameworks, solo Go puro!
+Linux Forum es un sistema de foros ligero, rápido y fácil de integrar en cualquier sitio web. Usa SQLite, sesiones por cookie, configuración vía JSON, y cuenta con un sistema de comentarios anidados con podado inteligente. 
+Sin JavaScript, sin frameworks, solo Go puro
 
 ## Características
 
